@@ -1,35 +1,28 @@
-# Changelog
+# BottleNeck changelog
 
-All notable BottleNeck changes are documented here.
+## v0.4.0 – Productivity and workflow
 
-## [0.2.1] - 2026-11-14
+- Added persistent task time entries and one-active-timer-per-user enforcement.
+- Added daily and Saturday–Friday weekly reports with time totals by member and project.
+- Added recurring rules for daily, weekly and monthly task generation, including catch-up on workspace load.
+- Added reusable task templates with checklists and default assignments.
+- Added task dependency management, cycle detection and completion guards.
+- Added approval requests with owner/admin decision flow and decision comments.
+- Added workspace-specific labels and color choices for the five built-in statuses.
+- Added new navigation areas for reports, approvals, recurring rules and templates.
+- Increased desktop interface scale to approximately 120%; mobile layout stays at normal scale.
+- Preserved LAN port 1939, existing user sessions, creator credit and the previous v0.2/v0.3 database records.
+- Added database migration tables and expanded handbook / setup instructions.
 
-### Fixed
-- Removed the unnecessary `uvicorn[standard]` extras, which pulled in PyYAML and could trigger a Microsoft C++ Build Tools error on Windows.
-- Pinned the project launcher to Python 3.12 for a predictable Windows setup.
-- Updated Windows and macOS/Linux launch scripts and setup documentation.
+## v0.3.0 – Team collaboration and LAN
 
-## [0.2.0] - 2026-11-14
+- Multiple task assignees, checklists, private attachments, notifications, team membership management and LAN access on port 1939.
+- Added a guided tour, handbook, version history and creator credit popup.
 
-### Added
-- FastAPI server and SQLite persistence.
-- Account registration, sign-in, sign-out and server-side sessions.
-- PBKDF2-SHA256 password hashing and HttpOnly session cookies.
-- Workspace creation, workspace data isolation and owner/admin/member roles.
-- One-time invitation codes with seven-day expiry.
-- Tasks, task updates, task comments, projects, teams and activity history APIs.
-- First-run product tour saved to the user account.
-- In-app full handbook and release notes.
-- uv project configuration and platform launch scripts.
+## v0.2.1 – Windows install fix
 
-### Changed
-- Replaced browser localStorage as the source of truth with authenticated API requests.
-- Dashboard figures now derive from real workspace data. Empty workspaces start with zero records.
-- Updated settings and team pages for server-backed accounts and invitations.
+- Pinned setup to Python 3.12 and removed Uvicorn's optional standard extras to avoid unnecessary PyYAML native builds.
 
-## [0.1.0] - 2026-11-14
+## v0.2.0 – Server foundation
 
-### Added
-- First visual preview of the Persian RTL BottleNeck workspace.
-- Dashboard, task list, Kanban, calendar, projects, team and activity screens.
-- Local browser interactions and preliminary SQLite schema.
+- Introduced FastAPI, SQLite, server-side accounts/sessions, workspaces, invitations, tasks, projects and activity history.

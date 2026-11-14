@@ -1,6 +1,5 @@
--- BottleNeck v0.2.1 SQLite schema
--- Tables are initialized automatically when the FastAPI server starts.
-
+-- BottleNeck v0.3.0 SQLite schema
+-- Existing v0.2.x databases are upgraded automatically at server startup.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -84,11 +83,52 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TEXT NOT NULL,
   completed_at TEXT
 );
+CREATE TABLE IF NOT EXISTS task_assignees (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assigned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(task_id, user_id)
+);
 CREATE TABLE IF NOT EXISTS task_comments (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS task_checklists (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  is_done INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  uploaded_by TEXT NOT NULL REFERENCES users(id),
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  entity_type TEXT,
+  entity_id TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -101,6 +141,14 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   message TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS workspace_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS workspace_settings (
   workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
   week_starts_on INTEGER NOT NULL DEFAULT 6,
@@ -109,6 +157,93 @@ CREATE TABLE IF NOT EXISTS workspace_settings (
 CREATE INDEX IF NOT EXISTS idx_tasks_workspace_due ON tasks(workspace_id, due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_workspace_status ON tasks(workspace_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, task_id);
+CREATE INDEX IF NOT EXISTS idx_checklists_task ON task_checklists(task_id, position);
+CREATE INDEX IF NOT EXISTS idx_attachments_task ON task_attachments(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_workspace_time ON activity_logs(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_workspace_id ON workspace_events(workspace_id, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_invites_token ON invitations(token_hash);
+
+
+-- BottleNeck v0.4.0 productivity modules.
+CREATE TABLE IF NOT EXISTS time_entries (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  duration_seconds INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS task_dependencies (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(task_id, depends_on_task_id),
+  CHECK(task_id <> depends_on_task_id)
+);
+CREATE TABLE IF NOT EXISTS recurring_rules (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
+  assignee_ids TEXT NOT NULL DEFAULT '[]',
+  team_id TEXT REFERENCES teams(id) ON DELETE SET NULL,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  cadence TEXT NOT NULL CHECK(cadence IN ('daily','weekly','monthly')),
+  interval_count INTEGER NOT NULL DEFAULT 1 CHECK(interval_count BETWEEN 1 AND 90),
+  next_run_on TEXT NOT NULL,
+  due_offset_days INTEGER NOT NULL DEFAULT 0 CHECK(due_offset_days BETWEEN 0 AND 365),
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS task_templates (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  priority TEXT NOT NULL DEFAULT 'medium',
+  estimate REAL,
+  checklist_json TEXT NOT NULL DEFAULT '[]',
+  assignee_ids TEXT NOT NULL DEFAULT '[]',
+  team_id TEXT REFERENCES teams(id) ON DELETE SET NULL,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS task_approvals (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  requested_by TEXT NOT NULL REFERENCES users(id),
+  reviewer_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+  comment TEXT NOT NULL DEFAULT '',
+  requested_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS workspace_status_labels (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  status_key TEXT NOT NULL CHECK(status_key IN ('todo','in-progress','review','blocked','done')),
+  label TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT 'neutral',
+  position INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(workspace_id, status_key)
+);
+CREATE INDEX IF NOT EXISTS idx_time_workspace_started ON time_entries(workspace_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_time_user_active ON time_entries(user_id, ended_at);
+CREATE INDEX IF NOT EXISTS idx_dependencies_task ON task_dependencies(task_id, depends_on_task_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_rules(workspace_id, is_active, next_run_on);
+CREATE INDEX IF NOT EXISTS idx_templates_workspace ON task_templates(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approvals_workspace_status ON task_approvals(workspace_id, status, requested_at DESC);

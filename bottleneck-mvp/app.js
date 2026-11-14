@@ -1,749 +1,499 @@
+/* BottleNeck v0.3.0
+   Creator credit requested by the project owner: «ساخته شده با عشق توسط ژلوفن».
+   Telegram: https://t.me/jelofen1962 | Phone: +989109721962
+*/
 (() => {
   'use strict';
-
-  const $ = (id) => document.getElementById(id);
-  const statusMeta = {
-    todo: { label: 'در صف', cls: 'todo' },
-    'in-progress': { label: 'در حال انجام', cls: 'in-progress' },
-    review: { label: 'در بررسی', cls: 'review' },
-    blocked: { label: 'متوقف‌شده', cls: 'blocked' },
-    done: { label: 'تکمیل‌شده', cls: 'done' }
-  };
-  const priorityMeta = {
-    urgent: { label: 'فوری', cls: 'urgent' },
-    high: { label: 'زیاد', cls: 'high' },
-    medium: { label: 'متوسط', cls: 'medium' },
-    low: { label: 'کم', cls: 'low' }
-  };
-  const roleNames = { owner: 'مالک', admin: 'مدیر', member: 'عضو' };
-  const viewNames = {
+  const VERSION = '0.3.0';
+  const STATUSES = [
+    { id: 'todo', label: 'در صف', cls: 'todo' },
+    { id: 'in-progress', label: 'در حال انجام', cls: 'in-progress' },
+    { id: 'review', label: 'در بررسی', cls: 'review' },
+    { id: 'blocked', label: 'متوقف‌شده', cls: 'blocked' },
+    { id: 'done', label: 'تکمیل‌شده', cls: 'done' }
+  ];
+  const PRIORITIES = [
+    { id: 'urgent', label: 'فوری', cls: 'urgent' },
+    { id: 'high', label: 'زیاد', cls: 'high' },
+    { id: 'medium', label: 'متوسط', cls: 'medium' },
+    { id: 'low', label: 'کم', cls: 'low' }
+  ];
+  const PAGES = {
     overview: 'نمای کلی', 'my-tasks': 'کارهای من', 'all-tasks': 'همه کارها',
-    board: 'برد کانبان', calendar: 'تقویم', projects: 'پروژه‌ها', team: 'اعضای تیم',
-    activity: 'گزارش فعالیت', handbook: 'راهنمای استفاده', settings: 'تنظیمات حساب'
+    board: 'برد کانبان', calendar: 'تقویم', projects: 'پروژه‌ها',
+    teams: 'تیم‌ها و اعضا', activity: 'گزارش فعالیت', handbook: 'راهنمای استفاده', settings: 'تنظیمات'
   };
-  const boardColumns = [
-    { id: 'todo', label: 'در صف' }, { id: 'in-progress', label: 'در حال انجام' },
-    { id: 'review', label: 'در بررسی' }, { id: 'blocked', label: 'متوقف‌شده' }, { id: 'done', label: 'تکمیل‌شده' }
+  const TOUR = [
+    ['نمای کلی', 'این صفحه نبض فضای کاری را نشان می‌دهد: تعداد کارها، کارهای در جریان، موعدهای نزدیک، فعالیت‌های تازه و توزیع مسئولیت‌ها. آمار فقط از داده‌های واقعی فضای شما ساخته می‌شود.'],
+    ['کارها', 'از «کار جدید» برای ثبت یک خروجی روشن استفاده کنید. می‌توانید چند مسئول، تیم، پروژه، اولویت، زمان برآوردی و موعد انجام انتخاب کنید.'],
+    ['چک‌لیست و پیوست', 'داخل جزئیات هر کار، چک‌لیست بسازید، فایل پیوست کنید و در بخش گفتگو با همکاران هماهنگ شوید. محدودیت هر فایل ۱۰ مگابایت است.'],
+    ['برد کانبان', 'کارت‌ها را بین ستون‌ها بکشید. تغییر وضعیت به سرور ذخیره می‌شود و همکاران در شبکه محلی تغییر را دریافت می‌کنند.'],
+    ['تقویم و پروژه‌ها', 'موعد کارها را در تقویم ببینید و کارهای مرتبط را در پروژه‌ها جمع کنید. پیشرفت پروژه از کارهای متصل محاسبه می‌شود.'],
+    ['تیم‌ها و اعلان‌ها', 'اعضا را به تیم‌ها اضافه کنید، برای همکاران لینک دعوت بسازید و اعلان‌های واگذاری یا گفتگو را از زنگوله بالا بررسی کنید.'],
+    ['راهنما و پشتیبان‌گیری', 'راهنمای کامل داخل برنامه قرار دارد. پایگاه داده و فایل‌ها روی رایانه میزبان ذخیره می‌شوند؛ به‌طور منظم از پوشه data پشتیبان بگیرید.']
   ];
-  const tourSteps = [
-    { view: 'overview', target: '[data-tour="overview"]', title: 'نمای کلی، نقطه شروع شماست', text: 'اینجا وضعیت واقعی فضای کاری را می‌بینید: کارهای نزدیک به موعد، موارد عقب‌افتاده، پیشرفت و آخرین تغییرات. وقتی فضای کار تازه ساخته شده باشد، آمارها از صفر شروع می‌شوند.' },
-    { view: 'my-tasks', target: '[data-tour="my-tasks"]', title: 'مسئولیت‌های خودتان را جدا ببینید', text: 'در «کارهای من» فقط وظایفی نمایش داده می‌شوند که به حساب شما واگذار شده‌اند. می‌توانید کارهای باز و تکمیل‌شده را جدا کنید و فهرست را مرتب کنید.' },
-    { view: 'all-tasks', target: '[data-tour="all-tasks"]', title: 'یک تصویر مشترک از همه کارها', text: 'در این صفحه کل کارهای فضای کار قرار دارد. بر اساس وضعیت، تیم یا پروژه فیلتر کنید و با بازکردن هر ردیف به جزئیات، یادداشت‌ها و ویرایش کار برسید.' },
-    { view: 'board', target: '[data-tour="board"]', title: 'جریان انجام کار را روی برد ببینید', text: 'کارت‌ها بین ستون‌ها حرکت می‌کنند. یک کارت را بکشید و در ستون مقصد رها کنید؛ وضعیت جدید روی سرور ذخیره خواهد شد.' },
-    { view: 'projects', target: '[data-tour="projects"]', title: 'کارهای مرتبط را در پروژه جمع کنید', text: 'پروژه یک هدف مشترک را مشخص می‌کند. بعد از ساخت پروژه، آن را هنگام ثبت کار انتخاب کنید تا پیشرفت پروژه بر اساس کارهای متصل محاسبه شود.' },
-    { view: 'team', target: '[data-tour="team"]', title: 'هم‌تیمی‌ها را دعوت کنید', text: 'مدیر یا مالک می‌تواند دعوت‌نامه بسازد. لینک را کپی کنید و برای همکار بفرستید؛ همکار با همان ایمیل دعوت‌شده ثبت‌نام می‌کند و به فضای فعلی می‌پیوندد.' },
-    { view: 'handbook', target: '[data-tour="handbook"]', title: 'راهنما همیشه در دسترس است', text: 'راهنمای کامل داخل برنامه، کاربرد هر صفحه، تعریف وضعیت‌ها، نکات امنیتی و تاریخچه تغییرات نسخه‌ها را توضیح می‌دهد. هر زمان نیاز داشتید می‌توانید از همین منو دوباره آن را باز کنید.' }
-  ];
+  const $ = (id) => document.getElementById(id);
+  const state = { me: null, tasks: [], users: [], teams: [], projects: [], activity: [], invitations: [], notifications: [], unread: 0, page: 'overview', search: '', eventCursor: 0, pollHandle: null, month: new Date(), taskFilter: 'all', modalTaskId: null, tourStep: 0, network: null };
 
-  let me = null;
-  let data = { tasks: [], users: [], teams: [], projects: [], activity: [], invitations: [] };
-  let activeView = 'overview';
-  let currentFilter = { my: 'all', all: 'all' };
-  let searchTerm = '';
-  let calendarDate = new Date();
-  let selectedTaskId = null;
-  let selectedTourStep = 0;
-  let draggedTaskId = null;
-  let editingProjectId = null;
-  let inviteCode = new URLSearchParams(location.search).get('invite') || '';
-
-  const fa = (value) => Number(value || 0).toLocaleString('fa-IR');
-  const isoToday = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const faNum = (value) => Number(value || 0).toLocaleString('fa-IR');
+  const roleLabel = (r) => ({ owner: 'مالک', admin: 'مدیر', member: 'عضو' }[r] || 'عضو');
+  const statusOf = (id) => STATUSES.find(x => x.id === id) || STATUSES[0];
+  const priorityOf = (id) => PRIORITIES.find(x => x.id === id) || PRIORITIES[2];
+  const userOf = (id) => state.users.find(u => u.id === id) || { id: '', name: 'بدون مسئول', email: '', role: 'member' };
+  const projectOf = (id) => state.projects.find(p => p.id === id) || { name: 'بدون پروژه' };
+  const teamOf = (id) => state.teams.find(t => t.id === id) || { name: 'بدون تیم' };
+  const isAdmin = () => state.me && ['owner', 'admin'].includes(state.me.role);
+  const fmtDate = (iso, options = { day: 'numeric', month: 'short' }) => {
+    if (!iso) return 'بدون موعد';
+    const dt = new Date(`${iso.slice(0, 10)}T12:00:00`);
+    return Number.isNaN(dt.getTime()) ? iso : dt.toLocaleDateString('fa-IR', options);
   };
-  const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const dateObject = (iso) => iso ? new Date(`${iso}T12:00:00`) : null;
-  const formatDate = (iso) => {
-    const d = dateObject(iso);
-    return d ? d.toLocaleDateString('fa-IR', { day: 'numeric', month: 'short' }) : 'بدون موعد';
-  };
-  const fullDate = (iso) => {
-    const d = dateObject(iso);
-    return d ? d.toLocaleDateString('fa-IR', { year: 'numeric', month: 'long', day: 'numeric' }) : 'ثبت نشده';
-  };
-  const formatDateTime = (iso) => {
+  const fmtTime = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleDateString('fa-IR', { day: 'numeric', month: 'short' }) + '، ' + d.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('fa-IR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
-  const userById = (id) => data.users.find((u) => u.id === id) || null;
-  const projectById = (id) => data.projects.find((p) => p.id === id) || null;
-  const teamById = (id) => data.teams.find((t) => t.id === id) || null;
-  const overdue = (task) => task.status !== 'done' && task.dueDate && task.dueDate < isoToday();
-  const isAdmin = () => me && ['owner', 'admin'].includes(me.role);
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const overdue = (task) => task.status !== 'done' && task.dueDate && task.dueDate < todayISO();
+  const initials = (name) => String(name || '؟').trim().split(/\s+/).slice(0, 2).map(x => x[0] || '').join('') || '؟';
+  const avatar = (user, size = '') => `<span class="avatar ${size}" title="${esc(user?.name || '')}">${esc(initials(user?.name))}</span>`;
+  const avatarStack = (arr = []) => `<span class="avatar-stack">${arr.slice(0, 4).map(x => avatar(x, 'avatar-xs')).join('')}${arr.length > 4 ? `<span class="avatar avatar-xs">+${faNum(arr.length - 4)}</span>` : ''}</span>`;
+  const statusPill = (id) => { const s = statusOf(id); return `<span class="status-pill status-${s.cls}">${s.label}</span>`; };
+  const priorityPill = (id) => { const p = priorityOf(id); return `<span class="priority-pill priority-${p.cls}">${p.label}</span>`; };
+  const empty = (icon, title, message) => `<div class="empty-state"><i data-lucide="${icon}"></i><strong>${esc(title)}</strong><br>${esc(message)}</div>`;
+  const rolePill = (role) => `<span class="role-pill ${role === 'owner' ? 'owner' : ''}">${roleLabel(role)}</span>`;
+  const iconRefresh = () => { try { window.lucide?.createIcons?.(); } catch (_) {} };
 
   async function api(path, options = {}) {
-    const config = { method: options.method || 'GET', credentials: 'same-origin', headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } };
-    if (options.body !== undefined) config.body = JSON.stringify(options.body);
-    const response = await fetch(path, config);
+    const opts = { credentials: 'same-origin', ...options, headers: { ...(options.headers || {}) } };
+    if (opts.body && !(opts.body instanceof Blob) && !(opts.body instanceof ArrayBuffer) && typeof opts.body !== 'string') {
+      opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(opts.body);
+    }
+    const response = await fetch(path, opts);
     const contentType = response.headers.get('content-type') || '';
-    const payload = contentType.includes('application/json') ? await response.json() : null;
+    const payload = contentType.includes('application/json') ? await response.json() : await response.text();
     if (!response.ok) {
-      const message = payload?.detail || `خطا در ارتباط با سرور (${response.status})`;
-      throw new Error(Array.isArray(message) ? message.map((x) => x.msg).join('، ') : message);
+      if (response.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') showAuth();
+      const detail = payload && typeof payload === 'object' ? payload.detail : payload;
+      throw new Error(detail || `درخواست ناموفق بود (${response.status})`);
     }
     return payload;
   }
-
-  function refreshIcons() {
-    if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
-  }
   function toast(message, icon = 'check') {
-    const node = document.createElement('div');
-    node.className = 'toast';
-    node.innerHTML = `<i data-lucide="${escapeHTML(icon)}"></i><span>${escapeHTML(message)}</span>`;
-    $('toastRegion').appendChild(node);
-    refreshIcons();
-    window.setTimeout(() => {
-      node.classList.add('toast-leaving');
-      window.setTimeout(() => node.remove(), 240);
-    }, 3000);
+    const node = document.createElement('div'); node.className = 'toast';
+    node.innerHTML = `<i data-lucide="${esc(icon)}"></i><span>${esc(message)}</span>`;
+    $('toastRegion').appendChild(node); iconRefresh();
+    window.setTimeout(() => { node.style.opacity = '0'; node.style.transform = 'translateY(7px)'; window.setTimeout(() => node.remove(), 220); }, 2900);
   }
-  function showAuthError(message) {
-    $('authError').textContent = message;
-    $('authError').classList.remove('hidden');
+  async function copyText(value) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(value); return true; } catch (_) { /* fall through to legacy copy for HTTP LAN */ }
+    }
+    const area = document.createElement('textarea'); area.value = value; area.setAttribute('readonly','');
+    area.style.position = 'fixed'; area.style.opacity = '0'; area.style.pointerEvents = 'none';
+    document.body.appendChild(area); area.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    area.remove();
+    if (!ok) throw new Error('کپی خودکار در این مرورگر مجاز نیست؛ نشانی را دستی انتخاب و کپی کنید.');
+    return true;
   }
-  function clearAuthError() {
-    $('authError').textContent = '';
+
+  function setAuthTab(tab) {
+    document.querySelectorAll('[data-auth-tab]').forEach(b => b.classList.toggle('active', b.dataset.authTab === tab));
+    $('loginPanel').classList.toggle('hidden', tab !== 'login');
+    $('registerPanel').classList.toggle('hidden', tab !== 'register');
     $('authError').classList.add('hidden');
   }
-  function switchAuth(mode) {
-    clearAuthError();
-    document.querySelectorAll('.auth-tab').forEach((el) => el.classList.toggle('active', el.dataset.authTab === mode));
-    $('loginPanel').classList.toggle('hidden', mode !== 'login');
-    $('registerPanel').classList.toggle('hidden', mode !== 'register');
-    $('inviteHint').classList.toggle('hidden', !inviteCode || mode !== 'register');
-    $('workspaceNameField').classList.toggle('hidden', Boolean(inviteCode));
-    $('workspaceName').required = !inviteCode;
-  }
   function showAuth() {
-    $('authScreen').classList.remove('hidden');
-    $('appShell').classList.add('hidden');
-    refreshIcons();
+    stopPolling(); $('appShell').classList.add('hidden'); $('authScreen').classList.remove('hidden');
+    setAuthTab(new URLSearchParams(location.search).has('invite') ? 'register' : 'login');
   }
-  function showApp() {
-    $('authScreen').classList.add('hidden');
-    $('appShell').classList.remove('hidden');
-    refreshIcons();
+  async function signIn(form) {
+    const email = $('loginEmail').value.trim(); const password = $('loginPassword').value;
+    try { await api('/api/auth/login', { method: 'POST', body: { email, password } }); await startWorkspace(); }
+    catch (e) { showAuthError(e.message); }
   }
+  async function register(form) {
+    const invite = new URLSearchParams(location.search).get('invite') || '';
+    const body = { name: $('registerName').value.trim(), email: $('registerEmail').value.trim(), password: $('registerPassword').value,
+      workspace_name: $('workspaceName').value.trim(), invite_code: invite || null };
+    try { await api('/api/auth/register', { method: 'POST', body }); history.replaceState({}, '', location.pathname); await startWorkspace(true); }
+    catch (e) { showAuthError(e.message); }
+  }
+  function showAuthError(message) { $('authError').textContent = message; $('authError').classList.remove('hidden'); }
 
-  async function hydrate() {
-    const boot = await api('/api/bootstrap');
-    me = boot.me;
-    data = { tasks: boot.tasks || [], users: boot.users || [], teams: boot.teams || [], projects: boot.projects || [], activity: boot.activity || [], invitations: boot.invitations || [] };
-    activeView = 'overview';
-    currentFilter = { my: 'all', all: 'all' };
-    searchTerm = '';
-    $('globalSearch').value = '';
-    renderIdentity();
-    populateFiltersAndForm();
-    showApp();
-    renderAll();
-    navigate('overview');
-    if (!me.onboardingCompleted) startTour();
-  }
-  async function checkSession() {
+  async function startWorkspace(isNew = false) {
     try {
-      await hydrate();
-    } catch (error) {
-      if (error.message && !error.message.includes('نشست') && !error.message.includes('وارد حساب')) console.warn(error);
-      showAuth();
-      if (inviteCode) switchAuth('register');
-    }
+      const data = await api('/api/bootstrap');
+      Object.assign(state, data); state.unread = Number(data.unreadNotifications || 0); state.eventCursor = Number(data.eventCursor || 0);
+      $('authScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
+      $('workspaceNameLabel').textContent = state.me.workspaceName;
+      $('workspaceInitial').textContent = initials(state.me.workspaceName).slice(0, 1);
+      $('workspaceRoleLabel').textContent = `${roleLabel(state.me.role)} · فضای مشترک`;
+      $('profileName').textContent = state.me.name; $('profileRole').textContent = roleLabel(state.me.role);
+      $('profileAvatar').textContent = initials(state.me.name).slice(0, 1); $('welcomeName')?.textContent;
+      $('globalSearch').value = state.search;
+      $('profileName').textContent = state.me.name; $('profileRole').textContent = roleLabel(state.me.role); $('profileAvatar').textContent = initials(state.me.name).slice(0, 1);
+      render(); startPolling();
+      if (!state.me.onboardingCompleted) openTour();
+      else if (isNew) toast('حساب شما آماده است. به BottleNeck خوش آمدید.');
+    } catch (e) { showAuth(); if (isNew) showAuthError(e.message); }
   }
-  function renderIdentity() {
-    $('workspaceNameLabel').textContent = me.workspaceName;
-    $('workspaceInitial').textContent = (me.workspaceName || 'ب').trim().slice(0, 1);
-    $('workspaceRoleLabel').textContent = `فضای مشترک · ${roleNames[me.role] || 'عضو'}`;
-    $('profileName').textContent = me.name;
-    $('profileRole').textContent = roleNames[me.role] || 'عضو';
-    $('profileAvatar').textContent = (me.name || '؟').trim().slice(0, 1);
-    $('welcomeName').textContent = me.name.split(' ')[0];
-    $('profileNameInput').value = me.name;
-    $('profileEmailInput').value = me.email;
-    $('settingsWorkspaceName').textContent = me.workspaceName;
-    $('settingsRole').textContent = roleNames[me.role] || 'عضو';
-    $('todayLabel').textContent = new Date().toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    $('inviteButton').classList.toggle('hidden', !isAdmin());
-    $('newTeamButton').classList.toggle('hidden', !isAdmin());
-    $('invitationList').closest('.invitations-panel').classList.toggle('hidden', !isAdmin());
+  async function refreshWorkspace(quiet = false) {
+    const data = await api('/api/bootstrap');
+    Object.assign(state, data); state.unread = Number(data.unreadNotifications || 0); state.eventCursor = Math.max(state.eventCursor, Number(data.eventCursor || 0));
+    $('profileName').textContent = state.me.name; $('profileRole').textContent = roleLabel(state.me.role); $('profileAvatar').textContent = initials(state.me.name).slice(0, 1);
+    render();
+    if (!quiet) toast('فضای کار به‌روز شد.');
   }
-  function populateFiltersAndForm() {
-    const teamFilter = $('teamFilter');
-    const projectFilter = $('projectFilter');
-    teamFilter.innerHTML = '<option value="all">همه تیم‌ها</option>' + data.teams.map((t) => `<option value="${escapeHTML(t.id)}">${escapeHTML(t.name)}</option>`).join('');
-    projectFilter.innerHTML = '<option value="all">همه پروژه‌ها</option>' + data.projects.map((p) => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.name)}</option>`).join('');
-    const currentTeam = $('taskTeam').value;
-    const currentProject = $('taskProject').value;
-    const currentAssignee = $('taskAssignee').value;
-    $('taskAssignee').innerHTML = '<option value="">بدون مسئول</option>' + data.users.map((u) => `<option value="${escapeHTML(u.id)}">${escapeHTML(u.name)}</option>`).join('');
-    $('taskTeam').innerHTML = '<option value="">بدون تیم</option>' + data.teams.map((t) => `<option value="${escapeHTML(t.id)}">${escapeHTML(t.name)}</option>`).join('');
-    $('taskProject').innerHTML = '<option value="">بدون پروژه</option>' + data.projects.map((p) => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.name)}</option>`).join('');
-    if ([...$('taskTeam').options].some((o) => o.value === currentTeam)) $('taskTeam').value = currentTeam;
-    if ([...$('taskProject').options].some((o) => o.value === currentProject)) $('taskProject').value = currentProject;
-    if ([...$('taskAssignee').options].some((o) => o.value === currentAssignee)) $('taskAssignee').value = currentAssignee;
+  function startPolling() {
+    stopPolling();
+    state.pollHandle = window.setInterval(async () => {
+      try {
+        const result = await api(`/api/updates?after_id=${state.eventCursor}`);
+        const events = result.events || [];
+        state.eventCursor = Math.max(state.eventCursor, Number(result.cursor || 0));
+        const external = events.filter(e => e.user_id && e.user_id !== state.me.id);
+        if (events.length) {
+          const before = state.unread;
+          const data = await api('/api/bootstrap'); Object.assign(state, data); state.unread = Number(data.unreadNotifications || 0); state.eventCursor = Math.max(state.eventCursor, Number(data.eventCursor || 0));
+          render();
+          if (external.length) toast('به‌روزرسانی تازه از هم‌تیمی‌ها دریافت شد.', 'refresh-cw');
+          if (state.unread > before) toast('اعلان تازه دارید.', 'bell');
+        }
+      } catch (_) { /* temporary LAN interruptions are retried on the next tick */ }
+    }, 3500);
   }
+  function stopPolling() { if (state.pollHandle) window.clearInterval(state.pollHandle); state.pollHandle = null; }
 
-  function statusHTML(status) {
-    const s = statusMeta[status] || statusMeta.todo;
-    return `<span class="status-pill status-${s.cls}">${s.label}</span>`;
+  function showModal(title, body, eyebrow = 'BottleNeck') {
+    $('modalTitle').textContent = title; $('modalEyebrow').textContent = eyebrow; $('modalBody').innerHTML = body;
+    $('modalBackdrop').classList.add('open'); $('modalBackdrop').setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden'; iconRefresh();
   }
-  function priorityHTML(priority) {
-    const p = priorityMeta[priority] || priorityMeta.medium;
-    return `<span class="priority-pill priority-${p.cls}">${p.label}</span>`;
+  function closeModal() { $('modalBackdrop').classList.remove('open'); $('modalBackdrop').setAttribute('aria-hidden', 'true'); $('modalBody').innerHTML = ''; document.body.style.overflow = ''; state.modalTaskId = null; }
+  function closeCredit() { $('creditBackdrop').classList.remove('open'); $('creditBackdrop').setAttribute('aria-hidden', 'true'); }
+  function openCredit() { $('creditBackdrop').classList.add('open'); $('creditBackdrop').setAttribute('aria-hidden', 'false'); iconRefresh(); }
+
+  function heading(title, description, action = '') {
+    return `<div class="page-heading"><div><p class="eyebrow"><span class="live-dot"></span> فضای کاری ${esc(state.me.workspaceName)}</p><h1>${esc(title)}</h1><p>${esc(description)}</p></div><div class="heading-actions">${action}</div></div>`;
   }
-  function avatarHTML(user, small = false) {
-    if (!user) return '<span class="avatar avatar-muted">؟</span>';
-    return `<span class="avatar ${small ? 'avatar-xs' : ''}" title="${escapeHTML(user.name)}">${escapeHTML(user.name.trim().slice(0, 1))}</span>`;
-  }
-  function emptyState(title, description, actionLabel = '', actionAttr = '') {
-    return `<div class="empty-state"><span class="empty-mark"><i data-lucide="inbox"></i></span><strong>${escapeHTML(title)}</strong><p>${escapeHTML(description)}</p>${actionLabel ? `<button class="secondary-button" ${actionAttr}>${escapeHTML(actionLabel)}</button>` : ''}</div>`;
-  }
-  function searchedTasks(list) {
-    const query = searchTerm.trim().toLocaleLowerCase('fa');
-    if (!query) return [...list];
-    return list.filter((t) => {
-      const a = userById(t.assigneeId)?.name || '';
-      const p = projectById(t.projectId)?.name || '';
-      const team = teamById(t.teamId)?.name || '';
-      return [t.title, t.description, a, p, team].join(' ').toLocaleLowerCase('fa').includes(query);
+  function tasksFiltered(onlyMine = false) {
+    const q = state.search.trim().toLocaleLowerCase('fa');
+    return state.tasks.filter(t => {
+      if (onlyMine && !(t.assigneeIds || []).includes(state.me.id)) return false;
+      if (!q) return true;
+      const users = (t.assignees || []).map(a => a.name).join(' ');
+      return [t.title, t.description, users, t.teamName, t.projectName].join(' ').toLocaleLowerCase('fa').includes(q);
     });
   }
-  function renderDashboard() {
-    const tasks = data.tasks;
-    const total = tasks.length;
-    const done = tasks.filter((t) => t.status === 'done').length;
-    const progress = tasks.filter((t) => t.status === 'in-progress').length;
-    const late = tasks.filter(overdue).length;
-    const pct = total ? Math.round(done / total * 100) : 0;
-    $('statTotal').textContent = fa(total);
-    $('statProgress').textContent = fa(progress);
-    $('statDone').textContent = fa(done);
-    $('statOverdue').textContent = fa(late);
-    $('progressPercent').textContent = `${fa(pct)}٪`;
-    $('progressDoneLabel').textContent = `${fa(done)} کار`;
-    $('progressOpenLabel').textContent = `${fa(total - done)} کار`;
-    $('progressRing').style.setProperty('--progress', `${pct}%`);
-    const openTasks = tasks.filter((t) => t.status !== 'done').sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999')).slice(0, 5);
-    $('upcomingTasks').innerHTML = openTasks.length ? openTasks.map((t) => {
-      const user = userById(t.assigneeId);
-      return `<button class="task-row" data-open-task="${escapeHTML(t.id)}"><span class="task-row-main"><span class="task-row-title">${escapeHTML(t.title)}</span><span class="task-row-meta">${escapeHTML(t.projectName || projectById(t.projectId)?.name || 'بدون پروژه')} · ${escapeHTML(user?.name || 'بدون مسئول')}</span></span><span class="task-due ${overdue(t) ? 'late' : ''}">${formatDate(t.dueDate)}</span><span class="task-row-status">${statusHTML(t.status)}</span></button>`;
-    }).join('') : emptyState('هنوز کاری ثبت نشده', 'اولین کار را بسازید تا جریان پیگیری در اینجا شکل بگیرد.', 'ثبت اولین کار', 'data-create-task');
-    const teamUsers = data.users.slice().sort((a, b) => (b.open_tasks || 0) - (a.open_tasks || 0)).slice(0, 5);
-    $('teamLoad').innerHTML = teamUsers.length ? teamUsers.map((u) => {
-      const max = Math.max(1, ...teamUsers.map((x) => Number(x.open_tasks || 0)));
-      const width = Math.round(Number(u.open_tasks || 0) / max * 100);
-      return `<div class="team-load-item">${avatarHTML(u, true)}<div class="team-load-copy"><strong>${escapeHTML(u.name)}</strong><span class="load-track"><i style="width:${width}%"></i></span></div><b>${fa(u.open_tasks || 0)}</b></div>`;
-    }).join('') : emptyState('هنوز عضوی وجود ندارد', 'اعضای تیم را از صفحه اعضا دعوت کنید.');
-    renderActivityList($('recentActivity'), data.activity.slice(0, 5));
+  function render() {
+    $('breadcrumbCurrent').textContent = PAGES[state.page] || 'نمای کلی';
+    document.querySelectorAll('.nav-item[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === state.page));
+    $('myTaskCount').textContent = faNum(state.tasks.filter(t => (t.assigneeIds || []).includes(state.me.id) && t.status !== 'done').length);
+    $('notificationDot').classList.toggle('hidden', state.unread < 1);
+    const renderer = {
+      overview: renderOverview, 'my-tasks': () => renderTasks(true), 'all-tasks': () => renderTasks(false),
+      board: renderBoard, calendar: renderCalendar, projects: renderProjects, teams: renderTeams,
+      activity: renderActivity, handbook: renderHandbook, settings: renderSettings
+    }[state.page] || renderOverview;
+    $('pageContent').innerHTML = renderer(); iconRefresh();
   }
-  function taskTableRows(list, includeAssignee) {
-    if (!list.length) return `<tr><td colspan="${includeAssignee ? 7 : 6}">${emptyState('کاری پیدا نشد', 'با تغییر فیلترها یا ساخت یک کار جدید ادامه دهید.', 'ثبت کار جدید', 'data-create-task')}</td></tr>`;
-    return list.map((task) => {
-      const common = `<td><div class="table-task-name"><button class="task-check ${task.status === 'done' ? 'checked' : ''}" data-toggle-task="${escapeHTML(task.id)}" title="تغییر وضعیت">${task.status === 'done' ? '<i data-lucide="check"></i>' : ''}</button><button class="table-title-button" data-open-task="${escapeHTML(task.id)}">${escapeHTML(task.title)}</button></div></td>`;
-      if (!includeAssignee) return `<tr>${common}<td>${escapeHTML(task.projectName || 'بدون پروژه')}</td><td>${priorityHTML(task.priority)}</td><td class="${overdue(task) ? 'task-due late' : 'task-due'}">${formatDate(task.dueDate)}</td><td>${statusHTML(task.status)}</td><td><button class="row-more" data-open-task="${escapeHTML(task.id)}" aria-label="جزئیات"><i data-lucide="arrow-up-left"></i></button></td></tr>`;
-      return `<tr>${common}<td><span class="person-cell">${avatarHTML(userById(task.assigneeId), true)}${escapeHTML(task.assigneeName || 'بدون مسئول')}</span></td><td>${escapeHTML(task.teamName || 'بدون تیم')}</td><td>${priorityHTML(task.priority)}</td><td class="${overdue(task) ? 'task-due late' : 'task-due'}">${formatDate(task.dueDate)}</td><td>${statusHTML(task.status)}</td><td><button class="row-more" data-open-task="${escapeHTML(task.id)}" aria-label="جزئیات"><i data-lucide="arrow-up-left"></i></button></td></tr>`;
-    }).join('');
+  function renderOverview() {
+    const tasks = state.tasks; const total = tasks.length;
+    const done = tasks.filter(t => t.status === 'done').length;
+    const progress = tasks.filter(t => t.status === 'in-progress').length;
+    const dueSoon = tasks.filter(t => t.status !== 'done' && t.dueDate && t.dueDate >= todayISO()).length;
+    const late = tasks.filter(overdue).length; const percent = total ? Math.round(done / total * 100) : 0;
+    const upcoming = tasks.filter(t => t.status !== 'done').slice(0, 6);
+    const maxLoad = Math.max(1, ...state.users.map(u => u.open_tasks || 0));
+    const loads = state.users.map(u => `<div class="team-load-row">${avatar(u,'avatar-xs')}<div class="team-load-meta"><strong>${esc(u.name)}</strong><small>${roleLabel(u.role)}</small></div><div class="load-track"><span style="width:${Math.round((u.open_tasks || 0)/maxLoad*100)}%"></span></div><b class="load-number">${faNum(u.open_tasks || 0)}</b></div>`).join('');
+    return `${heading(`سلام ${state.me.name.split(' ')[0]}، آماده‌ای؟`, 'نمایی روشن از کارهای باز، موعدها و اتفاق‌های تازه.', `<button class="secondary-button" data-page-link="handbook"><i data-lucide="book-open"></i> راهنمای شروع</button><button class="primary-button" data-action="new-task"><i data-lucide="plus"></i> ثبت کار جدید</button>`)}
+      <div class="overview-grid"><div class="main-column"><div class="stat-grid">
+        <article class="stat-card"><div class="stat-top"><span>همه کارها</span><i data-lucide="layers"></i></div><strong class="stat-number">${faNum(total)}</strong><div class="stat-foot"><span class="stat-caption">ثبت‌شده در فضای کار</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>در حال انجام</span><i data-lucide="activity"></i></div><strong class="stat-number">${faNum(progress)}</strong><div class="stat-foot"><span class="stat-caption">فعال و در جریان</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>تکمیل‌شده</span><i data-lucide="check-circle-2"></i></div><strong class="stat-number">${faNum(done)}</strong><div class="stat-foot"><span class="stat-caption">${faNum(percent)}٪ از کل کارها</span></div></article>
+        <article class="stat-card stat-card-alert"><div class="stat-top"><span>از موعد گذشته</span><i data-lucide="calendar-clock"></i></div><strong class="stat-number">${faNum(late)}</strong><div class="stat-foot"><span class="stat-caption">${faNum(dueSoon)} کار موعددار باز</span></div></article>
+      </div>
+      <section class="panel"><div class="panel-heading"><h2>کارهای پیش رو</h2><button class="text-button" data-page-link="all-tasks">دیدن همه کارها ←</button></div>
+        ${upcoming.length ? `<div class="task-list">${upcoming.map(taskRow).join('')}</div>` : empty('inbox','هنوز کاری ثبت نشده','اولین کار مشترک را ایجاد کنید تا برنامه شکل بگیرد.')}
+      </section>
+      <section class="panel" style="margin-top:14px"><div class="panel-heading"><h2>آخرین اتفاق‌ها</h2><button class="text-button" data-page-link="activity">گزارش کامل ←</button></div>${activityItems(state.activity.slice(0,5))}</section>
+      </div><aside class="right-column"><section class="progress-panel"><div class="panel-heading"><h2>پیشرفت کلی</h2><i data-lucide="chart-no-axes-combined" class="panel-icon"></i></div><div class="ring-wrap"><div class="progress-ring" style="--progress:${percent}%"><div class="ring-inner"><strong>${faNum(percent)}٪</strong><span>تکمیل کارها</span></div></div></div><div class="progress-legend"><div><span class="legend-dot done"></span>تکمیل‌شده <b>${faNum(done)}</b></div><div><span class="legend-dot doing"></span>در حال انجام <b>${faNum(progress)}</b></div><div><span class="legend-dot todo"></span>سایر وضعیت‌ها <b>${faNum(total-done-progress)}</b></div></div><p class="panel-footnote">درصد بر پایه تعداد کارهای تکمیل‌شده از مجموع کارها محاسبه می‌شود.</p></section>
+      <section class="panel team-load-panel"><div class="panel-heading"><h2>بار کاری اعضا</h2><small>${faNum(state.users.length)} عضو</small></div>${loads || empty('users','هنوز عضوی نیست','اعضای تیم را دعوت کنید.')}</section>
+      <div class="quick-tip"><span class="tip-mark">/</span><div><strong>میان‌بُر روزانه</strong><p>برای ثبت سریع کار جدید کلید N و برای جست‌وجو Ctrl + K را بزنید.</p></div></div></aside></div>`;
   }
-  function renderMyTasks() {
-    let list = searchedTasks(data.tasks.filter((t) => t.assigneeId === me.id));
-    if (currentFilter.my === 'open') list = list.filter((t) => t.status !== 'done');
-    if (currentFilter.my === 'done') list = list.filter((t) => t.status === 'done');
-    const sort = $('mySort').value;
-    if (sort === 'due') list.sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
-    if (sort === 'priority') list.sort((a, b) => ({ urgent: 0, high: 1, medium: 2, low: 3 }[a.priority] - { urgent: 0, high: 1, medium: 2, low: 3 }[b.priority]));
-    if (sort === 'newest') list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    $('myTasksTable').innerHTML = taskTableRows(list, false);
+  function taskRow(task) {
+    const people = task.assignees?.length ? avatarStack(task.assignees) : avatarStack([]);
+    return `<div class="task-row" data-open-task="${esc(task.id)}"><span class="task-check ${task.status === 'done' ? 'checked' : ''}" aria-hidden="true">${task.status === 'done' ? '<i data-lucide="check"></i>' : ''}</span><div class="task-main-text"><strong>${esc(task.title)}</strong><small>${esc(task.projectName || projectOf(task.projectId).name)} · ${esc(task.teamName || teamOf(task.teamId).name)}</small></div><div class="task-person">${people}<span>${esc(task.assignees?.map(a=>a.name).join('، ') || 'بدون مسئول')}</span></div><div>${priorityPill(task.priority)}</div><div>${statusPill(task.status)}</div><span class="task-due ${overdue(task) ? 'late' : ''}">${fmtDate(task.dueDate)}</span></div>`;
   }
-  function renderAllTasks() {
-    let list = searchedTasks(data.tasks);
-    const filter = currentFilter.all;
-    if (filter !== 'all') list = list.filter((t) => t.status === filter);
-    const teamId = $('teamFilter').value;
-    const projectId = $('projectFilter').value;
-    if (teamId !== 'all') list = list.filter((t) => t.teamId === teamId);
-    if (projectId !== 'all') list = list.filter((t) => t.projectId === projectId);
-    list.sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
-    $('allTasksTable').innerHTML = taskTableRows(list, true);
+  function renderTasks(onlyMine) {
+    let tasks = tasksFiltered(onlyMine);
+    if (state.taskFilter !== 'all') tasks = tasks.filter(t => state.taskFilter === 'open' ? t.status !== 'done' : t.status === 'done');
+    const title = onlyMine ? 'کارهای من' : 'همه کارها';
+    return `${heading(title, onlyMine ? 'کارهایی که شما یکی از مسئولان آن هستید.' : 'فهرست کارهای مشترک فضای کاری و وضعیت هرکدام.', `<button class="primary-button" data-action="new-task"><i data-lucide="plus"></i> کار جدید</button>`)}
+      <section class="panel table-panel"><div class="toolbar"><div class="filter-tabs"><button class="filter-tab ${state.taskFilter==='all'?'active':''}" data-task-filter="all">همه (${faNum(tasksFiltered(onlyMine).length)})</button><button class="filter-tab ${state.taskFilter==='open'?'active':''}" data-task-filter="open">باز</button><button class="filter-tab ${state.taskFilter==='done'?'active':''}" data-task-filter="done">تکمیل‌شده</button></div><div class="toolbar-right"><select class="select-control" id="statusFilter"><option value="">همه وضعیت‌ها</option>${STATUSES.map(s=>`<option value="${s.id}">${s.label}</option>`).join('')}</select><select class="select-control" id="teamFilter"><option value="">همه تیم‌ها</option>${state.teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></div></div>
+      <div class="task-table-wrap"><table class="task-table"><thead><tr><th>عنوان کار</th><th>مسئولان</th><th>اولویت</th><th>وضعیت</th><th>موعد</th><th>پیوست / چک‌لیست</th></tr></thead><tbody id="taskRows">${tasks.map(t=>`<tr data-open-task="${esc(t.id)}"><td><span class="table-task-name"><span class="task-check ${t.status==='done'?'checked':''}">${t.status==='done'?'<i data-lucide="check"></i>':''}</span><span>${esc(t.title)}<small style="display:block;color:#9da197;font-size:8px;margin-top:4px">${esc(t.projectName || projectOf(t.projectId).name)}</small></span></span></td><td><span class="person-cell">${avatarStack(t.assignees||[])} <small>${faNum(t.assignees?.length||0)}</small></span></td><td>${priorityPill(t.priority)}</td><td>${statusPill(t.status)}</td><td><span class="task-due ${overdue(t)?'late':''}">${fmtDate(t.dueDate)}</span></td><td><small>${faNum(t.attachmentCount||0)} فایل · ${faNum(t.checklistDone||0)}/${faNum(t.checklist||0)}</small></td></tr>`).join('') || `<tr><td colspan="6">${empty('list-checks','کاری پیدا نشد','فیلترها را تغییر دهید یا یک کار تازه بسازید.')}</td></tr>`}</tbody></table></div></section>`;
   }
   function renderBoard() {
-    const tasks = searchedTasks(data.tasks);
-    $('kanbanBoard').innerHTML = boardColumns.map((col) => {
-      const cards = tasks.filter((t) => t.status === col.id);
-      return `<section class="kanban-column" data-drop-status="${col.id}"><div class="kanban-head"><strong>${col.label}</strong><span>${fa(cards.length)}</span></div><div class="kanban-cards">${cards.length ? cards.map((task) => `<article class="kanban-card" draggable="true" data-drag-task="${escapeHTML(task.id)}" data-open-task="${escapeHTML(task.id)}"><div class="kanban-card-tags">${priorityHTML(task.priority)}${overdue(task) ? '<span class="late-mark">دیرکرد</span>' : ''}</div><h3>${escapeHTML(task.title)}</h3><p>${escapeHTML(task.projectName || 'بدون پروژه')}</p><div class="kanban-card-foot"><span>${formatDate(task.dueDate)}</span>${avatarHTML(userById(task.assigneeId), true)}</div></article>`).join('') : '<div class="kanban-empty">کار دیگری در این ستون نیست.</div>'}</div></section>`;
-    }).join('');
+    const tasks = tasksFiltered(false);
+    return `${heading('برد کانبان','جریان کار را با جابه‌جایی کارت‌ها مدیریت کنید.', `<button class="primary-button" data-action="new-task"><i data-lucide="plus"></i> کار جدید</button>`)}<div class="kanban-board" id="kanbanBoard">${STATUSES.map(col => {
+      const list = tasks.filter(t=>t.status===col.id);
+      return `<section class="kanban-column" data-drop-status="${col.id}"><div class="kanban-head"><strong>${col.label}</strong><span>${faNum(list.length)}</span></div><div class="kanban-cards">${list.map(t=>`<article class="kanban-card" draggable="true" data-drag-task="${esc(t.id)}"><div class="data-card-top">${priorityPill(t.priority)}<button class="icon-button subtle" data-open-task="${esc(t.id)}" aria-label="جزئیات"><i data-lucide="arrow-up-left"></i></button></div><h3 data-open-task="${esc(t.id)}">${esc(t.title)}</h3><small>${esc(t.projectName || projectOf(t.projectId).name)}</small><div class="kanban-card-foot" style="margin-top:12px"><span>${fmtDate(t.dueDate)}</span>${avatarStack(t.assignees||[])}</div>${t.checklist ? `<div class="inline-progress"><span style="width:${Math.round((t.checklistDone||0)/t.checklist*100)}%"></span></div>` : ''}</article>`).join('') || `<div class="empty-state">کار دیگری نیست</div>`}</div></section>`;
+    }).join('')}</div>`;
   }
   function renderCalendar() {
-    const y = calendarDate.getFullYear();
-    const m = calendarDate.getMonth();
-    $('calendarMonth').textContent = calendarDate.toLocaleDateString('fa-IR', { month: 'long', year: 'numeric' });
-    const first = new Date(y, m, 1);
-    const startOffset = (first.getDay() + 1) % 7;
-    const days = new Date(y, m + 1, 0).getDate();
-    const previousDays = new Date(y, m, 0).getDate();
-    const weekdays = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'];
-    let html = weekdays.map((day) => `<div class="calendar-cell calendar-weekday">${day}</div>`).join('');
-    for (let i = 0; i < 42; i += 1) {
-      let day, d, muted = false;
-      if (i < startOffset) { day = previousDays - startOffset + i + 1; d = new Date(y, m - 1, day); muted = true; }
-      else if (i >= startOffset + days) { day = i - startOffset - days + 1; d = new Date(y, m + 1, day); muted = true; }
-      else { day = i - startOffset + 1; d = new Date(y, m, day); }
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const events = data.tasks.filter((t) => t.dueDate === iso).slice(0, 3);
-      const today = iso === isoToday();
-      html += `<div class="calendar-cell ${muted ? 'muted' : ''} ${today ? 'today' : ''}"><span class="calendar-day-number">${fa(day)}</span>${events.map((t) => `<button class="calendar-event ${t.status === 'done' ? 'green' : t.priority === 'urgent' ? 'urgent' : ''}" data-open-task="${escapeHTML(t.id)}">${escapeHTML(t.title)}</button>`).join('')}</div>`;
+    const y = state.month.getFullYear(), m = state.month.getMonth();
+    const start = new Date(y,m,1); const offset = (start.getDay()+1)%7; // Saturday-first week
+    const days = new Date(y,m+1,0).getDate(); const cells = Math.ceil((offset+days)/7)*7;
+    const monthName = new Date(y,m,1).toLocaleDateString('fa-IR',{year:'numeric',month:'long'});
+    const weekdays = ['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
+    let grid = weekdays.map(d=>`<div class="calendar-cell calendar-weekday">${d}</div>`).join('');
+    for (let i=0;i<cells;i++) {
+      const day = i-offset+1; const valid = day>=1&&day<=days; const date = new Date(y,m,valid?day:day<1?day:day-days);
+      const iso = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      const events = state.tasks.filter(t=>t.dueDate===iso).slice(0,3);
+      grid += `<div class="calendar-cell ${valid?'':'muted'} ${iso===todayISO()?'today':''}"><span class="calendar-day-number">${faNum(date.getDate())}</span>${events.map(t=>`<button class="calendar-event ${t.status==='done'?'green':t.priority==='urgent'?'':''}" data-open-task="${esc(t.id)}">${esc(t.title)}</button>`).join('')}</div>`;
     }
-    $('calendarGrid').innerHTML = html;
+    return `${heading('تقویم','موعدهای ثبت‌شده در کارها را در نمای ماهانه ببینید.') }<section class="panel calendar-panel"><div class="calendar-month-head"><button class="icon-button" data-calendar="prev"><i data-lucide="chevron-right"></i></button><strong>${monthName}</strong><button class="icon-button" data-calendar="next"><i data-lucide="chevron-left"></i></button></div><div class="calendar-grid">${grid}</div></section>`;
   }
   function renderProjects() {
-    $('projectGrid').innerHTML = data.projects.length ? data.projects.map((project) => {
-      const tasks = data.tasks.filter((t) => t.projectId === project.id);
-      const done = tasks.filter((t) => t.status === 'done').length;
-      const rate = tasks.length ? Math.round(done / tasks.length * 100) : 0;
-      const tone = ['rust', 'green', 'blue', 'gold'].includes(project.color) ? project.color : 'rust';
-      return `<article class="project-card"><div class="project-card-top"><span class="project-mark project-${tone}"><i data-lucide="folder-kanban"></i></span><button class="icon-button subtle" data-project-tasks="${escapeHTML(project.id)}" aria-label="کارهای پروژه"><i data-lucide="arrow-up-left"></i></button></div><h3>${escapeHTML(project.name)}</h3><p>${escapeHTML(project.description || 'توضیحی برای این پروژه ثبت نشده است.')}</p><div class="project-progress"><div class="project-progress-label"><span>پیشرفت بر اساس کارها</span><b>${fa(rate)}٪</b></div><div class="project-progress-track"><span style="width:${rate}%"></span></div></div><div class="project-card-foot"><span>${fa(tasks.length)} کار · ${fa(done)} تکمیل‌شده</span><span class="project-actions"><button class="text-button" data-edit-project="${escapeHTML(project.id)}">ویرایش</button>${isAdmin() ? `<button class="text-button danger-text" data-delete-project="${escapeHTML(project.id)}">حذف</button>` : ''}</span></div></article>`;
-    }).join('') : emptyState('پروژه‌ای ساخته نشده', 'برای دسته‌بندی کارهای مرتبط، اولین پروژه را تعریف کنید.', 'ساخت پروژه', 'data-new-project');
+    const cards = state.projects.map(p=>{
+      const linked = state.tasks.filter(t=>t.projectId===p.id); const done = linked.filter(t=>t.status==='done').length; const percent = linked.length ? Math.round(done/linked.length*100) : 0;
+      return `<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="folder-kanban"></i></span><span class="quiet-tag">${p.status==='active'?'فعال':p.status==='completed'?'تکمیل‌شده':'بایگانی'}</span></div><h3>${esc(p.name)}</h3><p>${esc(p.description || 'بدون توضیحات')}</p><div class="project-progress"><div class="project-progress-label"><span>${faNum(done)} از ${faNum(linked.length)} کار تکمیل شده</span><b>${faNum(percent)}٪</b></div><div class="project-progress-track"><span style="width:${percent}%"></span></div></div><div class="data-card-actions"><button class="secondary-button" data-project-tasks="${esc(p.id)}">دیدن کارها</button><button class="icon-button" data-edit-project="${esc(p.id)}" title="ویرایش"><i data-lucide="pencil"></i></button>${isAdmin()?`<button class="icon-button" data-delete-project="${esc(p.id)}" title="حذف"><i data-lucide="trash-2"></i></button>`:''}</div></article>`;
+    }).join('');
+    return `${heading('پروژه‌ها','کارهای مرتبط با یک نتیجه یا ابتکار را کنار هم نگه دارید.', `<button class="primary-button" data-action="new-project"><i data-lucide="plus"></i> پروژه جدید</button>`)}<div class="data-grid">${cards || empty('folder-kanban','پروژه‌ای ساخته نشده','برای یک هدف مشترک، اولین پروژه را ایجاد کنید.')}</div>`;
   }
-  function renderTeam() {
-    $('teamGrid').innerHTML = data.users.length ? data.users.map((user) => `<article class="team-card">${avatarHTML(user)}<div class="team-info"><strong>${escapeHTML(user.name)}</strong><small>${escapeHTML(user.email)}</small></div><span class="role-pill role-${escapeHTML(user.role)}">${roleNames[user.role] || 'عضو'}</span><div class="team-card-count">${fa(user.open_tasks || 0)}<small>کار باز</small></div></article>`).join('') : emptyState('عضوی وجود ندارد', 'پس از دعوت همکاران، اعضای فضای کار در اینجا دیده می‌شوند.');
-    $('teamGroups').innerHTML = data.teams.length ? data.teams.map((team) => {
-      const teamTasks = data.tasks.filter((t) => t.teamId === team.id);
-      const assignedIds = [...new Set(teamTasks.map((t) => t.assigneeId).filter(Boolean))];
-      return `<div class="team-group-row"><span class="team-group-mark"><i data-lucide="users-round"></i></span><div><strong>${escapeHTML(team.name)}</strong><small>${escapeHTML(team.description || 'بدون توضیحات')}</small></div><b>${fa(teamTasks.length)} کار</b><span class="team-group-members">${assignedIds.length ? `${fa(assignedIds.length)} مسئول در کارها` : 'هنوز کاری واگذار نشده'}</span></div>`;
-    }).join('') : emptyState('تیمی ایجاد نشده', 'یک تیم برای گروه‌بندی کارها بسازید.');
-    $('invitationList').innerHTML = isAdmin() ? (data.invitations.length ? data.invitations.map((inv) => `<div class="invitation-row"><span class="invite-symbol"><i data-lucide="mail"></i></span><div><strong>${escapeHTML(inv.email)}</strong><small>${roleNames[inv.role] || 'عضو'} · اعتبار تا ${formatDate(inv.expires_at?.slice(0, 10))}</small></div><button class="text-button danger-text" data-revoke-invite="${escapeHTML(inv.id)}">لغو</button></div>`).join('') : '<p class="muted-copy">دعوت فعالی در انتظار پاسخ نیست.</p>') : '';
+  function renderTeams() {
+    const teamCards = state.teams.map(t=>`<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="users-round"></i></span><span class="quiet-tag">${faNum(t.members?.length||0)} عضو</span></div><h3>${esc(t.name)}</h3><p>${esc(t.description||'بدون توضیحات')}</p><div class="avatar-stack" style="margin-top:15px">${(t.members||[]).slice(0,6).map(u=>avatar(u,'avatar-xs')).join('')}</div><div class="data-card-actions">${isAdmin()?`<button class="secondary-button" data-manage-team="${esc(t.id)}">مدیریت اعضا</button><button class="icon-button" data-delete-team="${esc(t.id)}" title="حذف تیم"><i data-lucide="trash-2"></i></button>`:''}</div></article>`).join('');
+    const members = state.users.map(u=>`<div class="team-member-row">${avatar(u)}<div class="member-info"><strong>${esc(u.name)}</strong><small>${esc(u.email)}</small></div>${rolePill(u.role)}<span class="quiet-tag">${faNum(u.open_tasks||0)} کار باز</span></div>`).join('');
+    const invites = state.invitations.map(i=>`<div class="invite-row"><strong>${esc(i.email)}</strong><small>${roleLabel(i.role)} · انقضا ${fmtDate(i.expires_at?.slice(0,10))}</small><button class="icon-button" data-revoke-invite="${esc(i.id)}" title="لغو دعوت"><i data-lucide="x"></i></button></div>`).join('');
+    const actions = `${isAdmin()?'<button class="secondary-button" data-action="new-team"><i data-lucide="users"></i> ساخت تیم</button><button class="primary-button" data-action="invite"><i data-lucide="user-plus"></i> دعوت عضو</button>':''}`;
+    return `${heading('تیم‌ها و اعضا','اعضا را به گروه‌های کاری اضافه کنید و دعوت‌نامه‌های فعال را مدیریت کنید.',actions)}<div class="section-heading"><h2>تیم‌ها</h2><span class="quiet-tag">عضویت در تیم‌ها مستقل از مسئولیت هر کار است.</span></div><div class="data-grid">${teamCards || empty('users','تیمی وجود ندارد','یک تیم تازه بسازید.')}</div><div class="overview-grid" style="margin-top:20px"><section class="panel"><div class="panel-heading"><h2>اعضای فضای کار</h2><small>${faNum(state.users.length)} نفر</small></div>${members}</section><section class="panel"><div class="panel-heading"><h2>دعوت‌های در انتظار</h2><small>${faNum(state.invitations.length)} دعوت</small></div>${invites || empty('mail-check','دعوت فعالی نیست','لینک دعوت را برای همکار بعدی بسازید.')}</section></div>`;
   }
-  function renderActivityList(target, activities) {
-    if (!activities.length) {
-      target.innerHTML = '<div class="empty-inline"><i data-lucide="clock-3"></i><span>هنوز فعالیتی ثبت نشده است.</span></div>';
-      return;
-    }
-    target.innerHTML = activities.map((entry) => `<div class="activity-item"><span class="activity-symbol"><i data-lucide="${entry.entity_type === 'task' ? (entry.action === 'created' ? 'plus' : entry.action === 'commented' ? 'message-circle' : entry.action === 'deleted' ? 'trash-2' : 'refresh-cw') : entry.entity_type === 'member' ? 'user-plus' : entry.entity_type === 'project' ? 'folder-kanban' : 'activity'}"></i></span><div class="activity-copy"><strong>${escapeHTML(entry.user_name || 'عضو سابق')}</strong><span>${escapeHTML(entry.message)}</span><small>${formatDateTime(entry.created_at)}</small></div></div>`).join('');
+  function activityItems(items) {
+    if (!items.length) return empty('activity','هنوز فعالیتی ثبت نشده','پس از شروع کارها، رویدادها در اینجا دیده می‌شوند.');
+    return `<div class="activity-list">${items.map(a=>`<div class="activity-item"><span class="activity-symbol"><i data-lucide="${a.action==='created'?'plus-circle':a.action==='commented'?'message-circle':a.action==='status_changed'?'refresh-cw':a.action==='uploaded'?'paperclip':'activity'}"></i></span><div class="activity-copy"><strong>${esc(a.user_name||'عضو فضای کار')}</strong> ${esc(a.message)}<small>${fmtTime(a.created_at)}</small></div></div>`).join('')}</div>`;
   }
-  function renderCurrentView() {
-    if (activeView === 'my-tasks') renderMyTasks();
-    if (activeView === 'all-tasks') renderAllTasks();
-    if (activeView === 'board') renderBoard();
-    if (activeView === 'calendar') renderCalendar();
-    if (activeView === 'projects') renderProjects();
-    if (activeView === 'team') renderTeam();
-    if (activeView === 'activity') renderActivityList($('fullActivity'), data.activity);
-    refreshIcons();
+  function renderActivity() { return `${heading('گزارش فعالیت','ردپای تغییرات و گفت‌وگوهای مهم فضای کاری.') }<section class="panel activity-full-panel">${activityItems(state.activity)}</section>`; }
+  function renderHandbook() {
+    return `${heading('راهنمای استفاده','راهنمای کامل صفحه‌ها، گردش کار و تغییرات نسخه‌ها.')}
+      <article class="panel handbook">
+        <p class="eyebrow">BottleNeck · راهنمای محصول</p><h2>از BottleNeck چطور استفاده کنیم؟</h2><p>BottleNeck فضای کاری مشترک برای ثبت مسئولیت، پیگیری پیشرفت و هماهنگی تیم است. همه اعضا به یک پایگاه داده روی رایانه میزبان متصل می‌شوند؛ بنابراین هر تغییر پس از ذخیره، برای دیگران نیز قابل مشاهده خواهد بود.</p>
+        <div class="handbook-callout">نکته شبکه: رایانه میزبان باید روشن باشد و BottleNeck روی آن اجرا شود. سایر دستگاه‌ها از آدرس LAN همان رایانه و پورت ۱۹۳۹ وارد می‌شوند.</div>
+        <h2>۱. ورود و ساخت فضای کار</h2><ol><li>اولین نفر از زبانه «ساخت فضای کار» نام، ایمیل، گذرواژه و نام فضای کار را وارد می‌کند.</li><li>حساب اول با نقش مالک ساخته می‌شود.</li><li>اعضای بعدی با لینک دعوت و همان ایمیلی که دعوت شده‌اند ثبت‌نام می‌کنند.</li><li>نشست ورود در کوکی HttpOnly نگهداری و سمت سرور بررسی می‌شود.</li></ol>
+        <h2>۲. نمای کلی</h2><p>نمای کلی تعداد کارها، کارهای فعال، کارهای تکمیل‌شده، کارهای عقب‌افتاده، موعدهای نزدیک، فعالیت‌های تازه و بار کاری اعضا را نشان می‌دهد. فضای کاری تازه با آمار صفر شروع می‌شود؛ داده آزمایشی ساختگی وارد نمی‌شود.</p>
+        <h2>۳. کارها و مسئولیت‌ها</h2><p>در فرم کار، عنوان و توضیحات را وارد کنید. می‌توانید بیش از یک مسئول انتخاب کنید، سپس تیم، پروژه، وضعیت، اولویت، موعد و برآورد ساعت را تعیین کنید. انتخاب چند مسئول به معنی همکاری مشترک روی یک خروجی است؛ همه آنها اعلان واگذاری دریافت می‌کنند.</p><ul><li><b>در صف:</b> کار ثبت شده اما شروع نشده است.</li><li><b>در حال انجام:</b> یکی از اعضا در حال پیش‌بردن آن است.</li><li><b>در بررسی:</b> خروجی آماده بازبینی است.</li><li><b>متوقف‌شده:</b> تا رفع مانع امکان ادامه نیست.</li><li><b>تکمیل‌شده:</b> خروجی نهایی شده است.</li></ul>
+        <h2>۴. جزئیات کار، چک‌لیست و پیوست‌ها</h2><p>با بازکردن هر کار، جزئیات و گفت‌وگو را می‌بینید. از چک‌لیست برای تقسیم کار به قدم‌های کوچک استفاده کنید. هر مورد قابل تیک‌زدن و حذف است. در بخش فایل‌ها می‌توانید تصویر، PDF، اسناد Office، CSV، TXT و ZIP تا سقف ۱۰ مگابایت بارگذاری کنید. فایل‌ها به‌صورت خصوصی در پوشه داده سرور ذخیره می‌شوند و دریافت آنها نیازمند ورود و عضویت در همان فضای کاری است.</p>
+        <h2>۵. برد کانبان</h2><p>کارت‌ها را بین ستون‌ها بکشید. تغییر وضعیت در پایگاه داده ثبت می‌شود. به کمک به‌روزرسانی دوره‌ای هر ۳٫۵ ثانیه، دستگاه‌های دیگر نیز تغییرات را دریافت می‌کنند؛ برای وضعیت سریع‌تر، صفحه را دستی تازه کنید.</p>
+        <h2>۶. تقویم و پروژه‌ها</h2><p>تقویم فقط کارهایی را نشان می‌دهد که موعد دارند. پروژه‌ها گروه‌بندی هدف‌محور هستند و درصد پیشرفت از تعداد کارهای تکمیل‌شده در پروژه به کل کارهای آن محاسبه می‌شود.</p>
+        <h2>۷. تیم‌ها و مدیریت اعضا</h2><p>مالک و مدیر می‌توانند تیم بسازند، اعضا را به هر تیم اضافه یا از آن خارج کنند، دعوت‌نامه بسازند و دعوت‌های باز را لغو کنند. عضویت در تیم و مسئولیت کار دو مفهوم مستقل‌اند. عضو عادی می‌تواند کار بسازد و گفتگو کند؛ اما مدیریت ساختار تیم و دعوت‌نامه‌ها مخصوص مدیران است.</p>
+        <h2>۸. اعلان‌ها و همگام‌سازی</h2><p>اعلان برای واگذاری کار، یادداشت تازه روی کار و پیوستن عضو جدید ساخته می‌شود. زنگوله بالای صفحه تعداد اعلان‌های خوانده‌نشده را نشان می‌دهد. وضعیت و داده‌های مشترک از API سرور دریافت می‌شوند و از localStorage به‌عنوان منبع اصلی استفاده نمی‌شود.</p>
+        <h2>۹. شبکه محلی</h2><p>سرور روی <code>0.0.0.0:1939</code> گوش می‌دهد. از بخش تنظیمات می‌توانید IPهای شناسایی‌شده رایانه میزبان را ببینید. در ویندوز، شبکه باید روی Private باشد و در صورت مسدودشدن اتصال، قانون فایروال خصوصی برای TCP پورت ۱۹۳۹ ایجاد کنید. این راه‌اندازی برای شبکه محلی مورد اعتماد است، نه انتشار مستقیم روی اینترنت.</p>
+        <h2>۱۰. نسخه‌ها</h2><h3>v0.3.0 · همکاری تیمی و شبکه محلی</h3><ul><li>چک‌لیست و زیرکار برای هر وظیفه.</li><li>بارگذاری و دریافت پیوست با دسترسی احراز هویت‌شده.</li><li>اعلان‌های درون‌برنامه‌ای و علامت‌گذاری به‌عنوان خوانده‌شده.</li><li>چند مسئول برای هر کار.</li><li>مدیریت عضویت اعضا در تیم‌ها.</li><li>همگام‌سازی تغییرات در شبکه از طریق polling رویدادهای سرور.</li><li>راه‌اندازی LAN با IP شبکه و پورت ۱۹۳۹.</li><li>پنجره امضای سازنده با پیوند تلگرام و شماره تماس.</li></ul>
+        <h3>v0.2.1 · رفع مشکل نصب ویندوز</h3><p>استفاده از Python 3.12 و حذف وابستگی‌های اختیاری Uvicorn برای جلوگیری از ساخت بومی PyYAML در نصب ویندوز.</p>
+        <h3>v0.2.0 · پایه سرور</h3><p>حساب‌های سرور، فضای کاری مشترک، نشست امن، دعوت‌نامه، کارها، پروژه‌ها و فعالیت‌ها.</p>
+        <h2>۱۱. پشتیبان‌گیری</h2><p>سرور را متوقف کنید و از کل پوشه <code>data</code> شامل فایل SQLite و پوشه uploads نسخه پشتیبان بگیرید. برای بازیابی، نسخه پشتیبان را در همان مسیر قرار دهید و برنامه را دوباره اجرا کنید. فایل دیتابیس را هنگام نوشتن فعال، با کپی ساده جابه‌جا نکنید.</p>
+        <h2>۱۲. میان‌برها</h2><ul><li><code>N</code> ساخت کار جدید.</li><li><code>Ctrl + K</code> تمرکز روی جست‌وجو.</li><li><code>Esc</code> بستن پنجره باز.</li><li>کلید راهنما، تور شروع را دوباره اجرا می‌کند.</li></ul>
+        <h2>۱۳. مرزهای فعلی MVP</h2><p>ارسال ایمیل خودکار، بازیابی گذرواژه، احراز هویت دومرحله‌ای، چند فضای کار برای هر کاربر، زمان‌سنج، کار تکرارشونده، وابستگی بین کارها و اعلان push هنوز در این نسخه وجود ندارد. همگام‌سازی زنده با polling کوتاه‌دوره انجام می‌شود، نه WebSocket. فایل‌ها فقط برای اعضای همان فضای کار قابل دریافت هستند.</p>
+      </article>`;
   }
-  function renderAll() {
-    renderDashboard();
-    renderCurrentView();
-    $('myTaskCount').textContent = fa(data.tasks.filter((t) => t.assigneeId === me.id && t.status !== 'done').length);
-    refreshIcons();
+  function renderSettings() {
+    // Network details are refreshed by navigate() after this view is rendered.
+    const urls = state.network?.urls?.length ? state.network.urls.map(url=>`<div class="network-address"><code>${esc(url)}</code><button data-copy="${esc(url)}" title="کپی"><i data-lucide="copy"></i></button></div>`).join('') : `<p class="form-hint">IP شبکه در دسترس نیست؛ اتصال localhost همچنان فعال است.</p>`;
+    return `${heading('تنظیمات','اطلاعات حساب، نسخه برنامه و دسترسی در شبکه محلی.')}
+      <div class="settings-grid"><section class="panel settings-card"><div class="settings-icon"><i data-lucide="user-round"></i></div><h2>اطلاعات شخصی</h2><p>نام نمایشی شما در فعالیت‌ها، اعلان‌ها و کارها نمایش داده می‌شود.</p><form id="profileForm" class="form-stack"><label class="field"><span>نام نمایشی</span><input id="profileNameInput" required minlength="2" maxlength="80" value="${esc(state.me.name)}" /></label><label class="field"><span>ایمیل حساب</span><input disabled value="${esc(state.me.email)}" /></label><button class="secondary-button" type="submit">ذخیره تغییرات</button></form></section>
+      <section class="panel settings-card"><div class="settings-icon"><i data-lucide="network"></i></div><h2>دسترسی شبکه محلی</h2><p>از دستگاه‌های دیگر متصل به همین شبکه Wi-Fi یا LAN، یکی از این نشانی‌ها را باز کنید.</p><div class="setting-data"><span>وضعیت</span><strong class="live-indicator">سرور در حال اجرا</strong></div>${urls}<div class="network-address"><code>http://127.0.0.1:1939</code><button data-copy="http://127.0.0.1:1939"><i data-lucide="copy"></i></button></div><p class="form-hint">اگر دستگاه دیگر وصل نشد، فایروال ویندوز و نوع شبکه Private را بررسی کنید.</p></section>
+      <section class="panel settings-card"><div class="settings-icon"><i data-lucide="database"></i></div><h2>نسخه و داده‌ها</h2><p>اطلاعات این فضا روی سرور میزبان ذخیره می‌شود. برای انتقال یا پشتیبان‌گیری، پوشه data را نگه دارید.</p><div class="setting-data"><span>نسخه</span><strong>BottleNeck v${VERSION}</strong></div><div class="setting-data"><span>پایگاه داده</span><code>data/bottleneck.sqlite3</code></div><span class="version-tag">SQLite · FastAPI · LAN :1939</span></section></div>
+      <div class="danger-zone"><div><strong>خروج از حساب</strong><p>نشست فعلی این مرورگر بسته می‌شود. داده‌های فضای کاری حذف نمی‌شوند.</p></div><button class="danger-button" data-action="logout"><i data-lucide="log-out"></i> خروج امن</button></div>`;
   }
-  function navigate(view) {
-    if (!viewNames[view]) return;
-    activeView = view;
-    document.querySelectorAll('.view').forEach((el) => el.classList.toggle('active', el.dataset.viewSection === view));
-    document.querySelectorAll('.nav-item[data-view]').forEach((el) => el.classList.toggle('active', el.dataset.view === view));
-    $('breadcrumbCurrent').textContent = viewNames[view];
-    $('sidebar').classList.remove('open');
-    renderCurrentView();
-  }
-  function showModal(id) {
-    const node = $(id);
-    node.classList.add('open');
-    node.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('modal-open');
-  }
-  function closeModals() {
-    document.querySelectorAll('.modal-backdrop.open').forEach((node) => {
-      node.classList.remove('open');
-      node.setAttribute('aria-hidden', 'true');
-    });
-    document.body.classList.remove('modal-open');
-  }
-  function resetTaskForm() {
-    $('taskForm').reset();
-    $('taskId').value = '';
-    $('taskModalTitle').textContent = 'کار جدید';
-    $('saveTaskLabel').textContent = 'ثبت کار';
-    $('taskDue').value = '';
-    populateFiltersAndForm();
-    $('taskAssignee').value = me.id;
-  }
-  function openTaskForm(task = null) {
-    resetTaskForm();
-    if (task) {
-      $('taskId').value = task.id;
-      $('taskTitle').value = task.title;
-      $('taskDescription').value = task.description || '';
-      $('taskAssignee').value = task.assigneeId || '';
-      $('taskTeam').value = task.teamId || '';
-      $('taskProject').value = task.projectId || '';
-      $('taskStatus').value = task.status;
-      $('taskPriority').value = task.priority;
-      $('taskDue').value = task.dueDate || '';
-      $('taskEstimate').value = task.estimate ?? '';
-      $('taskModalTitle').textContent = 'ویرایش کار';
-      $('saveTaskLabel').textContent = 'ذخیره تغییرات';
-    }
-    closeModals();
-    showModal('taskModal');
-    $('taskTitle').focus();
-  }
-  function taskPayload() {
-    return {
-      title: $('taskTitle').value.trim(), description: $('taskDescription').value.trim(),
-      assignee_id: $('taskAssignee').value || null, team_id: $('taskTeam').value || null,
-      project_id: $('taskProject').value || null, status: $('taskStatus').value,
-      priority: $('taskPriority').value, due_date: $('taskDue').value || null,
-      estimate: $('taskEstimate').value ? Number($('taskEstimate').value) : null
-    };
-  }
-  async function reloadData() {
-    const boot = await api('/api/bootstrap');
-    me = boot.me;
-    data = { tasks: boot.tasks || [], users: boot.users || [], teams: boot.teams || [], projects: boot.projects || [], activity: boot.activity || [], invitations: boot.invitations || [] };
-    renderIdentity();
-    populateFiltersAndForm();
-    renderAll();
+
+  function openTaskEditor(task = null) {
+    const editing = !!task;
+    const assigneeIds = task?.assigneeIds || [];
+    const users = state.users.map(u=>`<option value="${esc(u.id)}" ${assigneeIds.includes(u.id)?'selected':''}>${esc(u.name)} · ${roleLabel(u.role)}</option>`).join('');
+    const body = `<form id="taskEditor" class="form-stack"><input type="hidden" id="editTaskId" value="${esc(task?.id||'')}" />
+      <label class="field"><span>عنوان کار <b>*</b></span><input id="editTaskTitle" required minlength="2" maxlength="180" value="${esc(task?.title||'')}" placeholder="خروجی مشخصی که باید انجام شود" /></label>
+      <label class="field"><span>توضیحات</span><textarea id="editTaskDescription" rows="3" maxlength="12000" placeholder="شرح کار و خروجی مورد انتظار">${esc(task?.description||'')}</textarea></label>
+      <div class="form-grid"><label class="field field-wide"><span>مسئولان (برای انتخاب چند نفر، Ctrl را نگه دارید)</span><select id="editTaskAssignees" multiple>${users}</select></label>
+      <label class="field"><span>تیم</span><select id="editTaskTeam"><option value="">بدون تیم</option>${state.teams.map(t=>`<option value="${esc(t.id)}" ${task?.teamId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>پروژه</span><select id="editTaskProject"><option value="">بدون پروژه</option>${state.projects.map(p=>`<option value="${esc(p.id)}" ${task?.projectId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>وضعیت</span><select id="editTaskStatus">${STATUSES.map(s=>`<option value="${s.id}" ${task?.status===s.id?'selected':''}>${s.label}</option>`).join('')}</select></label>
+      <label class="field"><span>اولویت</span><select id="editTaskPriority">${PRIORITIES.map(p=>`<option value="${p.id}" ${task?.priority===p.id?'selected':(!task&&p.id==='medium')?'selected':''}>${p.label}</option>`).join('')}</select></label>
+      <label class="field"><span>موعد انجام</span><input id="editTaskDue" type="date" value="${esc(task?.dueDate||'')}" /></label>
+      <label class="field"><span>برآورد زمان (ساعت)</span><input id="editTaskEstimate" type="number" min="0" step="0.5" value="${task?.estimate ?? ''}" /></label></div>
+      <div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button" type="submit"><i data-lucide="check"></i>${editing?'ذخیره تغییرات':'ثبت کار'}</button></div></form>`;
+    showModal(editing ? 'ویرایش کار' : 'ثبت کار جدید', body, 'مدیریت وظیفه');
   }
   async function openTaskDetail(taskId) {
-    const task = data.tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    selectedTaskId = taskId;
-    $('detailTitle').textContent = task.title;
-    $('deleteTaskButton').classList.toggle('hidden', !isAdmin() && task.createdBy !== me.id);
-    $('detailBody').innerHTML = `<div class="detail-meta">${statusHTML(task.status)}${priorityHTML(task.priority)}${overdue(task) ? '<span class="late-mark">از موعد گذشته</span>' : ''}</div><p class="detail-description">${escapeHTML(task.description || 'برای این کار توضیحی ثبت نشده است.')}</p><div class="detail-info-grid"><div class="detail-info"><span>مسئول</span><strong>${escapeHTML(task.assigneeName || 'بدون مسئول')}</strong></div><div class="detail-info"><span>تیم</span><strong>${escapeHTML(task.teamName || 'بدون تیم')}</strong></div><div class="detail-info"><span>پروژه</span><strong>${escapeHTML(task.projectName || 'بدون پروژه')}</strong></div><div class="detail-info"><span>موعد</span><strong>${fullDate(task.dueDate)}</strong></div><div class="detail-info"><span>برآورد زمان</span><strong>${task.estimate ? `${fa(task.estimate)} ساعت` : 'ثبت نشده'}</strong></div><div class="detail-info"><span>آخرین تغییر</span><strong>${formatDateTime(task.updatedAt)}</strong></div></div>`;
-    $('commentList').innerHTML = '<p class="muted-copy">در حال دریافت یادداشت‌ها...</p>';
-    showModal('detailModal');
-    refreshIcons();
+    const task = state.tasks.find(t=>t.id===taskId); if (!task) return;
+    state.modalTaskId = taskId;
+    showModal(task.title, `<div class="empty-state"><i data-lucide="loader-circle"></i>در حال دریافت جزئیات کار...</div>`, 'جزئیات کار');
     try {
-      const comments = await api(`/api/tasks/${encodeURIComponent(taskId)}/comments`);
-      if (selectedTaskId !== taskId) return;
-      $('commentList').innerHTML = comments.length ? comments.map((c) => `<div class="comment-item"><span class="avatar avatar-xs">${escapeHTML((c.user_name || '؟').slice(0, 1))}</span><div><strong>${escapeHTML(c.user_name)}</strong><p>${escapeHTML(c.body)}</p><small>${formatDateTime(c.created_at)}</small></div></div>`).join('') : '<p class="muted-copy">هنوز یادداشتی برای این کار ثبت نشده است.</p>';
-    } catch (error) {
-      $('commentList').innerHTML = `<p class="muted-copy">${escapeHTML(error.message)}</p>`;
+      const [comments, checklist, attachments] = await Promise.all([
+        api(`/api/tasks/${taskId}/comments`), api(`/api/tasks/${taskId}/checklist`), api(`/api/tasks/${taskId}/attachments`)
+      ]);
+      const people = task.assignees?.map(u=>`<span>${esc(u.name)}</span>`).join('') || '<span>بدون مسئول</span>';
+      const canDelete = isAdmin() || task.createdBy === state.me.id;
+      const body = `<div class="detail-meta">${statusPill(task.status)}${priorityPill(task.priority)}<span class="quiet-tag">موعد: ${fmtDate(task.dueDate)}</span></div>
+        <div class="detail-info-grid"><div class="detail-info"><span>مسئولان</span><div class="task-assignee-chips">${people}</div></div><div class="detail-info"><span>تیم / پروژه</span><strong>${esc(task.teamName||'بدون تیم')} · ${esc(task.projectName||'بدون پروژه')}</strong></div><div class="detail-info"><span>برآورد</span><strong>${task.estimate == null ? 'ثبت نشده' : `${faNum(task.estimate)} ساعت`}</strong></div><div class="detail-info"><span>پیشرفت چک‌لیست</span><strong>${faNum(checklist.filter(x=>x.is_done).length)} از ${faNum(checklist.length)}</strong></div></div>
+        <div class="detail-description">${esc(task.description||'توضیحی ثبت نشده است.')}</div>
+        <section class="detail-section"><div class="detail-section-head"><h3>چک‌لیست</h3><small>${faNum(checklist.filter(x=>x.is_done).length)}/${faNum(checklist.length)} تکمیل</small></div><div class="checklist-list">${checklist.map(c=>`<label class="checklist-item ${c.is_done?'done':''}"><input type="checkbox" data-checklist-toggle="${esc(c.id)}" ${c.is_done?'checked':''}><span>${esc(c.title)}</span><button type="button" class="icon-button subtle" data-delete-checklist="${esc(c.id)}" aria-label="حذف"><i data-lucide="x"></i></button></label>`).join('') || '<p class="form-hint">هنوز موردی ثبت نشده است.</p>'}</div><form id="checklistForm" class="checklist-add"><input name="title" required maxlength="240" placeholder="قدم بعدی را بنویسید..." /><button class="secondary-button" type="submit"><i data-lucide="plus"></i> افزودن</button></form></section>
+        <section class="detail-section"><div class="detail-section-head"><h3>فایل‌های پیوست</h3><small>حداکثر ۱۰ مگابایت برای هر فایل</small></div><div class="attachment-list">${attachments.map(a=>`<div class="attachment-item"><i data-lucide="file"></i><div class="attachment-meta"><strong>${esc(a.original_name)}</strong><small>${formatBytes(a.size_bytes)} · ${esc(a.uploader_name||'')}</small></div><a class="icon-button" href="/api/attachments/${esc(a.id)}/download" title="دریافت"><i data-lucide="download"></i></a>${(isAdmin()||a.uploaded_by===state.me.id)?`<button class="icon-button" data-delete-attachment="${esc(a.id)}" title="حذف"><i data-lucide="trash-2"></i></button>`:''}</div>`).join('') || '<p class="form-hint">هنوز فایلی پیوست نشده است.</p>'}</div><div class="upload-row"><input id="attachmentInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip" /><span class="form-hint">PDF، تصویر، Office، CSV، TXT و ZIP</span></div></section>
+        <section class="detail-section"><div class="detail-section-head"><h3>گفت‌وگو</h3><small>${faNum(comments.length)} یادداشت</small></div><div class="comment-list">${comments.map(c=>`<div class="comment-item"><strong>${esc(c.user_name)}</strong><p>${esc(c.body)}</p><small>${fmtTime(c.created_at)}</small></div>`).join('') || '<p class="form-hint">هنوز یادداشتی ثبت نشده است.</p>'}</div><form id="commentForm" class="comment-form"><textarea name="body" rows="2" maxlength="5000" required placeholder="یادداشت یا توضیحی برای اعضای تیم بنویسید..."></textarea><button class="primary-button" type="submit"><i data-lucide="send"></i> ارسال</button></form></section>
+        <div class="modal-footer">${canDelete?'<button class="danger-button" data-delete-task><i data-lucide="trash-2"></i> حذف کار</button>':''}<span class="spacer"></span><button class="secondary-button" data-close-modal>بستن</button><button class="primary-button" data-edit-task><i data-lucide="pencil"></i> ویرایش کار</button></div>`;
+      $('modalTitle').textContent = task.title; $('modalBody').innerHTML = body; iconRefresh();
+    } catch (e) { $('modalBody').innerHTML = `<p class="auth-error">${esc(e.message)}</p>`; }
+  }
+  function formatBytes(bytes) { if (bytes < 1024) return `${faNum(bytes)} بایت`; if (bytes < 1024*1024) return `${(bytes/1024).toFixed(1)} KB`; return `${(bytes/1024/1024).toFixed(1)} MB`; }
+  async function saveTask(form) {
+    const id = $('editTaskId').value;
+    const ids = [...$('editTaskAssignees').selectedOptions].map(o=>o.value);
+    const payload = { title: $('editTaskTitle').value.trim(), description: $('editTaskDescription').value.trim(),
+      assignee_ids: ids, team_id: $('editTaskTeam').value || null, project_id: $('editTaskProject').value || null,
+      status: $('editTaskStatus').value, priority: $('editTaskPriority').value, due_date: $('editTaskDue').value || null,
+      estimate: $('editTaskEstimate').value === '' ? null : Number($('editTaskEstimate').value) };
+    await api(id ? `/api/tasks/${id}` : '/api/tasks', { method: id ? 'PATCH' : 'POST', body: payload });
+    closeModal(); await refreshWorkspace(true); toast(id ? 'تغییرات کار ذخیره شد.' : 'کار جدید ثبت شد.');
+  }
+  async function changeTaskStatus(taskId, status) {
+    const t = state.tasks.find(x=>x.id===taskId); if (!t) return;
+    await api(`/api/tasks/${taskId}`, { method:'PATCH', body:{ title:t.title, description:t.description, status, priority:t.priority,
+      assignee_ids:t.assigneeIds||[], team_id:t.teamId, project_id:t.projectId, due_date:t.dueDate, estimate:t.estimate } });
+    await refreshWorkspace(true); toast('وضعیت کار ذخیره شد.');
+  }
+  async function saveProject(projectId = null) {
+    const payload = { name:$('projectNameInput').value.trim(), description:$('projectDescriptionInput').value.trim(), color:$('projectColorInput').value };
+    await api(projectId?`/api/projects/${projectId}`:'/api/projects',{method:projectId?'PATCH':'POST',body:payload});
+    closeModal(); await refreshWorkspace(true); toast(projectId?'پروژه ویرایش شد.':'پروژه ساخته شد.');
+  }
+  function openProjectEditor(project = null) {
+    const body = `<form id="projectEditor" class="form-stack"><label class="field"><span>نام پروژه</span><input id="projectNameInput" required minlength="2" maxlength="120" value="${esc(project?.name||'')}" /></label><label class="field"><span>توضیحات</span><textarea id="projectDescriptionInput" rows="3" maxlength="3000">${esc(project?.description||'')}</textarea></label><label class="field"><span>رنگ نشانه</span><select id="projectColorInput"><option value="rust">آجری</option><option value="green">سبز</option><option value="blue">آبی خاکستری</option><option value="gold">طلایی</option></select></label><div class="modal-footer"><button class="secondary-button" type="button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">${project?'ذخیره':'ساخت پروژه'}</button></div></form>`;
+    showModal(project?'ویرایش پروژه':'پروژه جدید',body,'هدف مشترک'); $('projectEditor').dataset.projectId=project?.id || ''; if(project) $('projectColorInput').value=project.color;
+  }
+  function openTeamEditor(team = null) {
+    const body = `<form id="teamEditor" class="form-stack"><label class="field"><span>نام تیم</span><input id="teamNameInput" required minlength="2" maxlength="80" value="${esc(team?.name||'')}" /></label><label class="field"><span>توضیحات</span><textarea id="teamDescriptionInput" rows="3" maxlength="1000">${esc(team?.description||'')}</textarea></label><div class="modal-footer"><button class="secondary-button" type="button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">ساخت تیم</button></div></form>`;
+    showModal('ساخت تیم جدید',body,'ساختار همکاری');
+  }
+  function openInviteEditor() {
+    const body = `<form id="inviteEditor" class="form-stack"><label class="field"><span>ایمیل همکار</span><input id="inviteEmailInput" required type="email" placeholder="colleague@company.com" /></label><label class="field"><span>سطح دسترسی</span><select id="inviteRoleInput"><option value="member">عضو</option><option value="admin">مدیر</option></select></label><p class="form-hint">لینک دعوت ۷ روز اعتبار دارد. آن را کپی کنید و برای همکارتان بفرستید.</p><div class="modal-footer"><button class="secondary-button" type="button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">ساخت لینک دعوت</button></div></form>`;
+    showModal('دعوت همکار',body,'دعوت به همکاری');
+  }
+  function openManageTeam(teamId) {
+    const team = state.teams.find(t=>t.id===teamId); if(!team) return;
+    const list = state.users.map(u=>`<label class="team-member-row"><input type="checkbox" name="member" value="${esc(u.id)}" ${(team.memberIds||[]).includes(u.id)?'checked':''}><div class="member-info"><strong>${esc(u.name)}</strong><small>${esc(u.email)}</small></div>${rolePill(u.role)}</label>`).join('');
+    showModal(`اعضای تیم ${team.name}`,`<form id="teamMembersForm"><div class="team-members-checks">${list}</div><div class="modal-footer"><button class="secondary-button" type="button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">ذخیره اعضا</button></div></form>`,'مدیریت عضویت'); $('teamMembersForm').dataset.teamId=teamId;
+  }
+  async function openNotifications() {
+    const result = await api('/api/notifications'); state.notifications=result.items; state.unread=result.unread; $('notificationDot').classList.toggle('hidden',state.unread<1);
+    const html = `<div class="panel-heading"><small>${faNum(result.unread)} خوانده‌نشده</small><button class="text-button" data-action="read-all">خواندن همه</button></div><div class="notification-list">${result.items.map(n=>`<div class="notification-item ${n.is_read?'':'unread'}" data-notification="${esc(n.id)}" data-entity="${esc(n.entity_id||'')}"><i data-lucide="${n.kind==='comment'?'message-circle':n.kind==='member'?'user-plus':'bell'}"></i><div class="notification-copy"><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><small>${fmtTime(n.created_at)}${n.actor_name?' · '+esc(n.actor_name):''}</small></div>${n.is_read?'':'<span class="unread-dot"></span>'}</div>`).join('') || empty('bell','اعلانی ندارید','واگذاری‌ها و گفتگوهای تازه در اینجا نمایش داده می‌شوند.')}</div>`;
+    showModal('اعلان‌ها',html,'مرکز اعلان');
+  }
+  function openTour() { state.tourStep=0; $('tourBackdrop').classList.remove('hidden'); drawTour(); }
+  function drawTour() {
+    const [title,text] = TOUR[state.tourStep]; $('tourStepLabel').textContent=`گام ${faNum(state.tourStep+1)} از ${faNum(TOUR.length)}`;
+    $('tourTitle').textContent=title; $('tourText').textContent=text;
+    $('tourProgress').innerHTML=TOUR.map((_,i)=>`<span class="${i<=state.tourStep?'active':''}"></span>`).join('');
+    $('tourPrev').disabled=state.tourStep===0; $('tourNext').innerHTML=state.tourStep===TOUR.length-1?'پایان <i data-lucide="check"></i>':'بعدی <i data-lucide="arrow-left"></i>'; iconRefresh();
+  }
+  async function finishTour() { $('tourBackdrop').classList.add('hidden'); await api('/api/me/onboarding',{method:'POST',body:{completed:true}}).catch(()=>{}); }
+  async function navigate(page) { if(!PAGES[page]) return; state.page=page; if(state.page!=='my-tasks'&&state.page!=='all-tasks') state.taskFilter='all'; render(); $('sidebar').classList.remove('open'); if(page==='settings') { const network=await api('/api/network').catch(()=>null); if(network){state.network=network; render();} } }
+
+  // Event delegation keeps dynamically-rendered views functional without inline scripts.
+  document.addEventListener('click', async (event) => {
+    const nav = event.target.closest('[data-page]'); if (nav) { navigate(nav.dataset.page); return; }
+    const pageLink = event.target.closest('[data-page-link]'); if(pageLink){ navigate(pageLink.dataset.pageLink); return; }
+    const close = event.target.closest('[data-close-modal]'); if(close){ closeModal(); return; }
+    const credit = event.target.closest('[data-open-credit]'); if(credit){openCredit();return;}
+    const closeCreditBtn = event.target.closest('[data-close-credit]'); if(closeCreditBtn){closeCredit();return;}
+    const openTask = event.target.closest('[data-open-task]'); if(openTask){openTaskDetail(openTask.dataset.openTask);return;}
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if(action==='new-task'){openTaskEditor();return;}
+    if(action==='new-project'){openProjectEditor();return;}
+    if(action==='new-team'){openTeamEditor();return;}
+    if(action==='invite'){openInviteEditor();return;}
+    if(action==='logout'){await api('/api/auth/logout',{method:'POST'}).catch(()=>{});showAuth();toast('از حساب خارج شدید.','log-out');return;}
+    if(action==='read-all'){await api('/api/notifications/read-all',{method:'POST'});await refreshWorkspace(true);await openNotifications();return;}
+    const filter = event.target.closest('[data-task-filter]'); if(filter){state.taskFilter=filter.dataset.taskFilter;render();return;}
+    const cal = event.target.closest('[data-calendar]'); if(cal){state.month.setMonth(state.month.getMonth()+(cal.dataset.calendar==='next'?1:-1));render();return;}
+    const editTask = event.target.closest('[data-edit-task]'); if(editTask){const t=state.tasks.find(x=>x.id===state.modalTaskId);closeModal();if(t)openTaskEditor(t);return;}
+    const deleteTask = event.target.closest('[data-delete-task]'); if(deleteTask){if(!confirm('این کار و فایل‌های پیوست آن حذف شود؟'))return;await api(`/api/tasks/${state.modalTaskId}`,{method:'DELETE'});closeModal();await refreshWorkspace(true);toast('کار حذف شد.');return;}
+    const addProject = event.target.closest('[data-edit-project]'); if(addProject){const p=state.projects.find(x=>x.id===addProject.dataset.editProject);if(p)openProjectEditor(p);return;}
+    const delProject = event.target.closest('[data-delete-project]'); if(delProject){if(!confirm('پروژه حذف شود؟ کارهای متصل باقی می‌مانند.'))return;await api(`/api/projects/${delProject.dataset.deleteProject}`,{method:'DELETE'});await refreshWorkspace(true);toast('پروژه حذف شد.');return;}
+    const projectTasks = event.target.closest('[data-project-tasks]');if(projectTasks){state.search='';$('globalSearch').value='';state.page='all-tasks';render();document.querySelectorAll('#taskRows tr[data-open-task]').forEach(row=>{const t=state.tasks.find(x=>x.id===row.dataset.openTask);row.hidden=t?.projectId!==projectTasks.dataset.projectTasks;});return;}
+    const manageTeam = event.target.closest('[data-manage-team]');if(manageTeam){openManageTeam(manageTeam.dataset.manageTeam);return;}
+    const delTeam = event.target.closest('[data-delete-team]');if(delTeam){if(!confirm('تیم حذف شود؟ کارهای آن بدون تیم باقی می‌مانند.'))return;await api(`/api/teams/${delTeam.dataset.deleteTeam}`,{method:'DELETE'});await refreshWorkspace(true);toast('تیم حذف شد.');return;}
+    const revoke = event.target.closest('[data-revoke-invite]');if(revoke){if(!confirm('دعوت‌نامه لغو شود؟'))return;await api(`/api/invitations/${revoke.dataset.revokeInvite}`,{method:'DELETE'});await refreshWorkspace(true);toast('دعوت‌نامه لغو شد.');return;}
+    const copy = event.target.closest('[data-copy]');if(copy){await copyText(copy.dataset.copy);toast('نشانی کپی شد.','copy');return;}
+    const notification = event.target.closest('[data-notification]');if(notification){const id=notification.dataset.notification,entity=notification.dataset.entity;await api(`/api/notifications/${id}/read`,{method:'PATCH'});await refreshWorkspace(true);closeModal();if(entity)openTaskDetail(entity);return;}
+    const deleteChecklist = event.target.closest('[data-delete-checklist]');if(deleteChecklist){await api(`/api/tasks/${state.modalTaskId}/checklist/${deleteChecklist.dataset.deleteChecklist}`,{method:'DELETE'});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
+    const deleteAttachment = event.target.closest('[data-delete-attachment]');if(deleteAttachment){if(!confirm('این پیوست حذف شود؟'))return;await api(`/api/attachments/${deleteAttachment.dataset.deleteAttachment}`,{method:'DELETE'});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
+  });
+
+  document.addEventListener('change', async (event) => {
+    const filter = event.target;
+    if(filter.id==='statusFilter'||filter.id==='teamFilter'){
+      document.querySelectorAll('#taskRows tr[data-open-task]').forEach(row=>{const t=state.tasks.find(x=>x.id===row.dataset.openTask);row.hidden=!!((filter.id==='statusFilter'&&filter.value&&t?.status!==filter.value)||(filter.id==='teamFilter'&&filter.value&&t?.teamId!==filter.value)|| (filter.id==='statusFilter'&&$('teamFilter')?.value&&t?.teamId!==$('teamFilter').value));});return;
     }
-  }
-  async function saveTaskStatus(task, status) {
-    const payload = {
-      title: task.title, description: task.description || '', status, priority: task.priority,
-      assignee_id: task.assigneeId, team_id: task.teamId, project_id: task.projectId,
-      due_date: task.dueDate, estimate: task.estimate
-    };
-    await api(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'PATCH', body: payload });
-    await reloadData();
-    toast('وضعیت کار به‌روزرسانی شد.');
-  }
+    if(filter.matches('[data-checklist-toggle]')){await api(`/api/tasks/${state.modalTaskId}/checklist/${filter.dataset.checklistToggle}`,{method:'PATCH',body:{is_done:filter.checked}});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
+    if(filter.id==='attachmentInput'&&filter.files?.[0]){
+      const file=filter.files[0];if(file.size>10*1024*1024){toast('حجم فایل بیشتر از ۱۰ مگابایت است.','alert-circle');filter.value='';return;}
+      try{await api(`/api/tasks/${state.modalTaskId}/attachments`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','X-Filename':encodeURIComponent(file.name)},body:file});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);toast('فایل پیوست شد.','paperclip');}catch(e){toast(e.message,'alert-circle');}
+    }
+  });
 
-  function startTour() {
-    selectedTourStep = 0;
-    $('tourBackdrop').classList.remove('hidden');
-    renderTourStep();
-  }
-  function renderTourStep() {
-    const step = tourSteps[selectedTourStep];
-    navigate(step.view);
-    document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight'));
-    const target = document.querySelector(step.target);
-    if (target) target.classList.add('tour-highlight');
-    $('tourStepLabel').textContent = `گام ${fa(selectedTourStep + 1)} از ${fa(tourSteps.length)}`;
-    $('tourTitle').textContent = step.title;
-    $('tourText').textContent = step.text;
-    $('tourProgress').innerHTML = tourSteps.map((_, i) => `<span class="${i <= selectedTourStep ? 'filled' : ''}"></span>`).join('');
-    $('tourPrev').disabled = selectedTourStep === 0;
-    $('tourNext').innerHTML = selectedTourStep === tourSteps.length - 1 ? 'پایان راهنما <i data-lucide="check"></i>' : 'بعدی <i data-lucide="arrow-left"></i>';
-    refreshIcons();
-  }
-  async function finishTour() {
-    $('tourBackdrop').classList.add('hidden');
-    document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight'));
-    try { await api('/api/me/onboarding', { method: 'POST', body: { completed: true } }); me.onboardingCompleted = true; }
-    catch (error) { toast(error.message, 'alert-circle'); }
-  }
-
-  async function handleRegister(event) {
-    event.preventDefault();
-    clearAuthError();
-    const button = $('registerForm').querySelector('button[type="submit"]');
-    button.disabled = true;
+  document.addEventListener('submit', async (event) => {
+    const form=event.target; event.preventDefault();
     try {
-      await api('/api/auth/register', { method: 'POST', body: {
-        name: $('registerName').value.trim(), email: $('registerEmail').value.trim(), password: $('registerPassword').value,
-        workspace_name: $('workspaceName').value.trim(), invite_code: inviteCode || null
-      }});
-      inviteCode = '';
-      history.replaceState({}, '', location.pathname);
-      await hydrate();
-      toast('حساب شما با موفقیت ساخته شد.');
-    } catch (error) { showAuthError(error.message); }
-    finally { button.disabled = false; }
-  }
-  async function handleLogin(event) {
-    event.preventDefault();
-    clearAuthError();
-    const button = $('loginForm').querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      await api('/api/auth/login', { method: 'POST', body: { email: $('loginEmail').value.trim(), password: $('loginPassword').value }});
-      await hydrate();
-      toast('با موفقیت وارد شدید.');
-    } catch (error) { showAuthError(error.message); }
-    finally { button.disabled = false; }
-  }
-  async function logout() {
-    try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) { /* session may already be gone */ }
-    me = null;
-    data = { tasks: [], users: [], teams: [], projects: [], activity: [], invitations: [] };
-    closeModals();
-    $('tourBackdrop').classList.add('hidden');
-    showAuth();
-    $('loginForm').reset();
-    toast('از حساب خارج شدید.', 'log-out');
-  }
-
-  // Authentication and account forms
-  $('loginForm').addEventListener('submit', handleLogin);
-  $('registerForm').addEventListener('submit', handleRegister);
-  document.querySelectorAll('[data-auth-tab]').forEach((el) => el.addEventListener('click', () => switchAuth(el.dataset.authTab)));
-  document.querySelectorAll('[data-switch-auth]').forEach((el) => el.addEventListener('click', () => switchAuth(el.dataset.switchAuth)));
-  $('logoutButton').addEventListener('click', logout);
-  $('logoutSettings').addEventListener('click', logout);
-
-  // Navigation and page-level controls
-  document.querySelectorAll('.nav-item[data-view]').forEach((el) => el.addEventListener('click', () => navigate(el.dataset.view)));
-  document.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', () => navigate(el.dataset.go)));
-  $('focusButton').addEventListener('click', () => navigate('my-tasks'));
-  $('mobileMenu').addEventListener('click', () => $('sidebar').classList.toggle('open'));
-  $('globalCreate').addEventListener('click', () => openTaskForm());
-  $('createTaskOverview').addEventListener('click', () => openTaskForm());
-  document.addEventListener('click', (event) => {
-    const create = event.target.closest('[data-create-task]');
-    if (create) openTaskForm();
-    const newProject = event.target.closest('[data-new-project]');
-    if (newProject) { editingProjectId = null; $('projectForm').reset(); showModal('projectModal'); }
-    const open = event.target.closest('[data-open-task]');
-    if (open) openTaskDetail(open.dataset.openTask);
-    const toggle = event.target.closest('[data-toggle-task]');
-    if (toggle) {
-      event.stopPropagation();
-      const task = data.tasks.find((t) => t.id === toggle.dataset.toggleTask);
-      if (task) saveTaskStatus(task, task.status === 'done' ? 'todo' : 'done').catch((error) => toast(error.message, 'alert-circle'));
-    }
-    const projectTasks = event.target.closest('[data-project-tasks]');
-    if (projectTasks) { $('projectFilter').value = projectTasks.dataset.projectTasks; navigate('all-tasks'); }
-    const deleteProject = event.target.closest('[data-delete-project]');
-    if (deleteProject && confirm('پروژه حذف شود؟ کارهای متصل به آن باقی می‌مانند و بدون پروژه خواهند شد.')) {
-      api(`/api/projects/${encodeURIComponent(deleteProject.dataset.deleteProject)}`, { method: 'DELETE' }).then(reloadData).then(() => toast('پروژه حذف شد.', 'trash-2')).catch((error) => toast(error.message, 'alert-circle'));
-    }
-    const editProject = event.target.closest('[data-edit-project]');
-    if (editProject) {
-      const project = projectById(editProject.dataset.editProject);
-      if (project) {
-        editingProjectId = project.id;
-        $('projectName').value = project.name;
-        $('projectDescription').value = project.description || '';
-        $('projectColor').value = project.color || 'rust';
-        $('projectModal').querySelector('h2').textContent = 'ویرایش پروژه';
-        $('projectModal').querySelector('button[type="submit"]').textContent = 'ذخیره پروژه';
-        showModal('projectModal');
+      if(form.id==='taskEditor'){await saveTask(form);return;}
+      if(form.id==='projectEditor'){const projectId=$('projectEditor').dataset.projectId||null;await saveProject(projectId);return;}
+      if(form.id==='teamEditor'){const payload={name:$('teamNameInput').value.trim(),description:$('teamDescriptionInput').value.trim()};await api('/api/teams',{method:'POST',body:payload});closeModal();await refreshWorkspace(true);toast('تیم ساخته شد.');return;}
+      if(form.id==='inviteEditor'){
+        const result=await api('/api/invitations',{method:'POST',body:{email:$('inviteEmailInput').value.trim(),role:$('inviteRoleInput').value}});
+        showModal('لینک دعوت آماده است',`<p class="form-hint">این لینک را برای همکارتان بفرستید. همکار باید با همین ایمیل ثبت‌نام کند. لینک تا ۷ روز معتبر است.</p><div class="invite-link-box"><input id="inviteUrlResult" readonly value="${esc(result.inviteUrl)}" /><button type="button" class="primary-button" data-copy-invite><i data-lucide="copy"></i> کپی</button></div><div class="modal-footer"><button class="secondary-button" data-close-modal>بستن</button></div>`,'دعوت به همکاری');await refreshWorkspace(true);return;
       }
-    }
-    const revoke = event.target.closest('[data-revoke-invite]');
-    if (revoke && confirm('این دعوت‌نامه لغو شود؟')) api(`/api/invitations/${encodeURIComponent(revoke.dataset.revokeInvite)}`, { method: 'DELETE' }).then(reloadData).then(() => toast('دعوت‌نامه لغو شد.')).catch((error) => toast(error.message, 'alert-circle'));
-  });
-  $('globalSearch').addEventListener('input', (event) => {
-    searchTerm = event.target.value;
-    renderCurrentView();
-  });
-  $('globalSearch').addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.target.value = ''; searchTerm = ''; renderCurrentView(); } });
-  $('mySort').addEventListener('change', renderMyTasks);
-  $('teamFilter').addEventListener('change', renderAllTasks);
-  $('projectFilter').addEventListener('change', renderAllTasks);
-  document.querySelectorAll('[data-filter-group]').forEach((group) => group.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-filter]');
-    if (!button) return;
-    const key = group.dataset.filterGroup;
-    currentFilter[key] = button.dataset.filter;
-    group.querySelectorAll('.filter-tab').forEach((tab) => tab.classList.toggle('active', tab === button));
-    if (key === 'my') renderMyTasks(); else renderAllTasks();
-  }));
-
-  // Task create/update/detail and comments
-  $('taskForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const id = $('taskId').value;
-    const button = $('taskForm').querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      await api(id ? `/api/tasks/${encodeURIComponent(id)}` : '/api/tasks', { method: id ? 'PATCH' : 'POST', body: taskPayload() });
-      closeModals();
-      await reloadData();
-      toast(id ? 'تغییرات کار ذخیره شد.' : 'کار جدید ثبت شد.');
-    } catch (error) { toast(error.message, 'alert-circle'); }
-    finally { button.disabled = false; }
-  });
-  $('editTaskButton').addEventListener('click', () => {
-    const task = data.tasks.find((t) => t.id === selectedTaskId);
-    if (task) openTaskForm(task);
-  });
-  $('deleteTaskButton').addEventListener('click', async () => {
-    if (!selectedTaskId || !confirm('این کار برای همه اعضای فضای کاری حذف شود؟')) return;
-    try {
-      await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}`, { method: 'DELETE' });
-      closeModals();
-      await reloadData();
-      toast('کار حذف شد.', 'trash-2');
-    } catch (error) { toast(error.message, 'alert-circle'); }
-  });
-  $('commentForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const body = $('commentBody').value.trim();
-    if (!body || !selectedTaskId) return;
-    try {
-      await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/comments`, { method: 'POST', body: { body } });
-      $('commentBody').value = '';
-      await reloadData();
-      await openTaskDetail(selectedTaskId);
-      toast('یادداشت ثبت شد.');
-    } catch (error) { toast(error.message, 'alert-circle'); }
+      if(form.id==='teamMembersForm'){const teamId=form.dataset.teamId;if(!teamId)throw new Error('شناسه تیم پیدا نشد.');const ids=[...form.querySelectorAll('input[name="member"]:checked')].map(x=>x.value);await api(`/api/teams/${teamId}/members`,{method:'PUT',body:{member_ids:ids}});closeModal();await refreshWorkspace(true);toast('اعضای تیم ذخیره شدند.');return;}
+      if(form.id==='checklistForm'){const title=form.elements.title.value.trim();if(!title)return;await api(`/api/tasks/${state.modalTaskId}/checklist`,{method:'POST',body:{title}});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
+      if(form.id==='commentForm'){const body=form.elements.body.value.trim();if(!body)return;await api(`/api/tasks/${state.modalTaskId}/comments`,{method:'POST',body:{body}});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);toast('یادداشت ثبت شد.');return;}
+      if(form.id==='profileForm'){await api('/api/me',{method:'PATCH',body:{name:$('profileNameInput').value.trim()}});await refreshWorkspace(true);toast('نام نمایشی ذخیره شد.');return;}
+      if(form.id==='loginForm'){await signIn(form);return;}
+      if(form.id==='registerForm'){await register(form);return;}
+    } catch(e){toast(e.message,'alert-circle');}
   });
 
-  // Kanban drag and drop
-  document.addEventListener('dragstart', (event) => {
-    const card = event.target.closest('[data-drag-task]');
-    if (!card) return;
-    draggedTaskId = card.dataset.dragTask;
-    card.classList.add('dragging');
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', draggedTaskId);
+  document.querySelectorAll('[data-auth-tab]').forEach(b=>b.addEventListener('click',()=>setAuthTab(b.dataset.authTab)));
+  document.querySelectorAll('[data-switch-auth]').forEach(b=>b.addEventListener('click',()=>setAuthTab(b.dataset.switchAuth)));
+  $('registerForm').addEventListener('input',()=>{});
+  $('logoutButton').addEventListener('click',async()=>{await api('/api/auth/logout',{method:'POST'}).catch(()=>{});showAuth();});
+  $('globalCreate').addEventListener('click',()=>openTaskEditor());
+  $('notificationButton').addEventListener('click',()=>openNotifications().catch(e=>toast(e.message,'alert-circle')));
+  $('helpButton').addEventListener('click',openTour);
+  $('focusButton').addEventListener('click',()=>navigate('my-tasks'));
+  $('mobileMenu').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
+  $('globalSearch').addEventListener('input',e=>{state.search=e.target.value.trim();if(!['my-tasks','all-tasks','board'].includes(state.page))state.page='all-tasks';render();});
+  $('globalSearch').addEventListener('keydown',e=>{if(e.key==='Escape'){e.target.value='';state.search='';render();e.target.blur();}});
+  $('modalBackdrop').addEventListener('click',e=>{if(e.target===$('modalBackdrop'))closeModal();});
+  $('creditBackdrop').addEventListener('click',e=>{if(e.target===$('creditBackdrop'))closeCredit();});
+  $('tourNext').addEventListener('click',()=>{if(state.tourStep<TOUR.length-1){state.tourStep++;drawTour();}else finishTour();});
+  $('tourPrev').addEventListener('click',()=>{if(state.tourStep>0){state.tourStep--;drawTour();}});
+  $('tourSkip').addEventListener('click',finishTour); $('tourClose').addEventListener('click',finishTour);
+  $('copyInviteLink')?.addEventListener('click',()=>{});
+  $('modalBody').addEventListener('click',async e=>{const b=e.target.closest('[data-copy-invite]');if(b){try{await copyText($('inviteUrlResult').value);toast('لینک دعوت کپی شد.','copy');}catch(err){toast(err.message,'alert-circle');}}});
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('globalSearch').focus();}
+    if(e.key.toLowerCase()==='n'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!e.ctrlKey&&!e.metaKey){e.preventDefault();openTaskEditor();}
+    if(e.key==='Escape'){closeModal();closeCredit();}
   });
-  document.addEventListener('dragend', (event) => {
-    const card = event.target.closest('[data-drag-task]');
-    card?.classList.remove('dragging');
-    document.querySelectorAll('.kanban-column.drag-over').forEach((el) => el.classList.remove('drag-over'));
-  });
-  document.addEventListener('dragover', (event) => {
-    const column = event.target.closest('[data-drop-status]');
-    if (!column) return;
-    event.preventDefault();
-    column.classList.add('drag-over');
-  });
-  document.addEventListener('dragleave', (event) => {
-    const column = event.target.closest('[data-drop-status]');
-    if (column && !column.contains(event.relatedTarget)) column.classList.remove('drag-over');
-  });
-  document.addEventListener('drop', async (event) => {
-    const column = event.target.closest('[data-drop-status]');
-    if (!column) return;
-    event.preventDefault();
-    column.classList.remove('drag-over');
-    const taskId = event.dataTransfer.getData('text/plain') || draggedTaskId;
-    const task = data.tasks.find((t) => t.id === taskId);
-    const newStatus = column.dataset.dropStatus;
-    if (!task || task.status === newStatus) return;
-    try { await saveTaskStatus(task, newStatus); }
-    catch (error) { toast(error.message, 'alert-circle'); }
-  });
-
-  // Calendar
-  $('prevMonth').addEventListener('click', () => { calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1); renderCalendar(); });
-  $('nextMonth').addEventListener('click', () => { calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1); renderCalendar(); });
-
-  // Projects, teams and invitations
-  $('newProjectButton').addEventListener('click', () => {
-    editingProjectId = null;
-    $('projectForm').reset();
-    $('projectModal').querySelector('h2').textContent = 'پروژه جدید';
-    $('projectModal').querySelector('button[type="submit"]').textContent = 'ساخت پروژه';
-    showModal('projectModal');
-  });
-  $('projectForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const payload = { name: $('projectName').value.trim(), description: $('projectDescription').value.trim(), color: $('projectColor').value };
-    try {
-      await api(editingProjectId ? `/api/projects/${encodeURIComponent(editingProjectId)}` : '/api/projects', { method: editingProjectId ? 'PATCH' : 'POST', body: payload });
-      editingProjectId = null;
-      closeModals();
-      await reloadData();
-      toast('پروژه ذخیره شد.');
-    } catch (error) { toast(error.message, 'alert-circle'); }
-  });
-  $('inviteButton').addEventListener('click', () => { $('inviteForm').reset(); showModal('inviteModal'); });
-  $('inviteForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      const invite = await api('/api/invitations', { method: 'POST', body: { email: $('inviteEmail').value.trim(), role: $('inviteRole').value } });
-      const link = `${location.origin}/?invite=${encodeURIComponent(invite.inviteCode)}`;
-      $('inviteLinkValue').value = link;
-      closeModals();
-      showModal('inviteResultModal');
-      await reloadData();
-      toast('لینک دعوت ساخته شد.');
-    } catch (error) { toast(error.message, 'alert-circle'); }
-  });
-  $('copyInviteLink').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText($('inviteLinkValue').value);
-      toast('لینک دعوت کپی شد.', 'copy-check');
-    } catch (_) {
-      $('inviteLinkValue').select();
-      document.execCommand('copy');
-      toast('لینک دعوت کپی شد.', 'copy-check');
-    }
-  });
-  $('newTeamButton').addEventListener('click', () => { $('teamForm').reset(); showModal('teamModal'); });
-  $('teamForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      await api('/api/teams', { method: 'POST', body: { name: $('teamName').value.trim(), description: $('teamDescription').value.trim() } });
-      closeModals();
-      await reloadData();
-      toast('تیم جدید ساخته شد.');
-    } catch (error) { toast(error.message, 'alert-circle'); }
-  });
-
-  // Profile and tour
-  $('profileForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      await api('/api/me', { method: 'PATCH', body: { name: $('profileNameInput').value.trim() } });
-      await reloadData();
-      toast('اطلاعات حساب به‌روزرسانی شد.');
-    } catch (error) { toast(error.message, 'alert-circle'); }
-  });
-  $('helpButton').addEventListener('click', startTour);
-  $('restartTourFromDocs').addEventListener('click', startTour);
-  $('tourNext').addEventListener('click', () => {
-    if (selectedTourStep >= tourSteps.length - 1) finishTour();
-    else { selectedTourStep += 1; renderTourStep(); }
-  });
-  $('tourPrev').addEventListener('click', () => { if (selectedTourStep > 0) { selectedTourStep -= 1; renderTourStep(); } });
-  $('tourSkip').addEventListener('click', finishTour);
-  $('tourClose').addEventListener('click', finishTour);
-
-  // Modal dismissal, keyboard shortcuts
-  document.querySelectorAll('[data-close-modal]').forEach((el) => el.addEventListener('click', closeModals));
-  document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) closeModals(); }));
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      closeModals();
-      if (!$('tourBackdrop').classList.contains('hidden')) finishTour();
-    }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault();
-      $('globalSearch').focus();
-    }
-    if (!event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'n' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !$('appShell').classList.contains('hidden')) {
-      event.preventDefault();
-      openTaskForm();
-    }
-    if (!event.ctrlKey && !event.metaKey && /^[1-5]$/.test(event.key) && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !$('appShell').classList.contains('hidden')) {
-      const views = ['overview', 'my-tasks', 'all-tasks', 'board', 'calendar'];
-      navigate(views[Number(event.key) - 1]);
-    }
-  });
-
-  // Entry point
-  switchAuth(inviteCode ? 'register' : 'login');
-  checkSession();
-  refreshIcons();
+  let draggedTaskId=null;
+  $('pageContent').addEventListener('dragstart',e=>{const card=e.target.closest('[data-drag-task]');if(!card)return;draggedTaskId=card.dataset.dragTask;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedTaskId);});
+  $('pageContent').addEventListener('dragend',()=>{draggedTaskId=null;document.querySelectorAll('.kanban-card').forEach(c=>c.classList.remove('dragging'));document.querySelectorAll('.kanban-column').forEach(c=>c.classList.remove('drag-over'));});
+  $('pageContent').addEventListener('dragover',e=>{const col=e.target.closest('[data-drop-status]');if(col){e.preventDefault();col.classList.add('drag-over');}});
+  $('pageContent').addEventListener('dragleave',e=>{const col=e.target.closest('[data-drop-status]');if(col&&!col.contains(e.relatedTarget))col.classList.remove('drag-over');});
+  $('pageContent').addEventListener('drop',async e=>{const col=e.target.closest('[data-drop-status]');if(!col)return;e.preventDefault();const id=e.dataTransfer.getData('text/plain')||draggedTaskId;if(!id)return;try{await changeTaskStatus(id,col.dataset.dropStatus);}catch(err){toast(err.message,'alert-circle');await refreshWorkspace(true);}});
+  // Apply invite-mode presentation before a session is checked.
+  const inviteCode = new URLSearchParams(location.search).get('invite');
+  if(inviteCode){setAuthTab('register');$('workspaceNameField').classList.add('hidden');$('inviteHint').classList.remove('hidden');}
+  // Restore an existing session, otherwise leave the registration screen ready.
+  startWorkspace().catch(()=>showAuth());
+  iconRefresh();
 })();

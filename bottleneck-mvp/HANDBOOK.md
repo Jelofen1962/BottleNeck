@@ -1,138 +1,117 @@
-# BottleNeck handbook
+# BottleNeck user handbook – v0.4.0
 
-**Product:** BottleNeck Team Work Tracker  
-**Current release:** 0.2.1  
-**Interface language:** Persian (RTL)
+BottleNeck is a Persian RTL workspace for planning tasks, coordinating teams and reviewing actual work. The host machine stores the SQLite database and uploaded files. Teammates on the same trusted LAN open the host's IP address on port 1939.
 
-This handbook explains the purpose of each workspace area, how to perform its main workflows, and what is included in the current MVP.
+## 1. First login and workspace
 
-## 1. Start here
+The first registered account becomes the owner and creates the workspace. Use **تیم‌ها و اعضا** to create teams and invite colleagues. Invitations are manually shared, email-specific and valid for seven days. The invited person must register with the invited email.
 
-The first person to create an account also creates a workspace and receives the owner role. The workspace is where tasks, projects, members, teams and activity live. It is stored in SQLite on the server.
+## 2. Dashboard and task views
 
-After registration, the guided tour walks through the main areas. The tour is saved against the account, so it will not automatically repeat after completion. Use the help icon in the top bar or the link at the end of this handbook to run it again.
+- **نمای کلی:** current workload, overdue tasks, progress, latest activity and member workload.
+- **کارهای من:** tasks where your account is assigned.
+- **همه کارها:** the workspace task table with status/team filters.
+- **برد کانبان:** drag a task card to another workflow column. The status change is persisted on the server.
+- **تقویم:** tasks with due dates, in a Saturday-first calendar.
 
-Recommended setup:
+Use `N` to open the new-task form. Use `Ctrl + K` to focus global search.
 
-1. Choose a workspace name that your team will recognize.
-2. Invite colleagues from the Team page.
-3. Create one project for each shared outcome or initiative.
-4. Create tasks with a clear deliverable, assignee, status and due date.
-5. Review the dashboard and activity page as part of the team's routine.
+## 3. Task details
 
-## 2. Overview
+A task may have multiple assignees, a team, project, priority, due date and estimated hours. Open a task to manage its checklist, private attachments and discussion.
 
-The dashboard summarizes actual workspace records. It displays all tasks, tasks in progress, completed tasks, overdue tasks, the completion share, tasks approaching their due dates, recent activity and open work per member. A newly created workspace correctly starts at zero; the app does not seed fictional metrics or sample records.
+### Checklists
 
-Use the top-bar **New task** action to capture work from any screen. Select a task in the upcoming list to inspect it.
+Add a short action item, check it when finished, reopen it if needed, or remove it. The checklist completion count is visible in task lists and on Kanban cards.
 
-## 3. My tasks
+### Attachments
 
-This view is filtered to tasks assigned to the currently signed-in account. Use the All / Open / Completed tabs to narrow the list. Sorting is available by due date, priority and creation date. The circular control at the start of a row toggles a task between completed and queued; use the detail view when you need to change to a different status.
+Upload PDF, common images, Office documents, CSV, TXT or ZIP files. Maximum size is 10 MB per file. Files are stored outside the static web directory and downloads require a valid session and membership in the same workspace. Admins can remove any attachment; members can remove files they uploaded.
 
-A task without an assignee will not appear in anyone's personal list until it is assigned.
+### Time tracking
 
-## 4. All tasks
+Open task details and select **شروع زمان‌سنج** when you begin working. Select **توقف زمان‌سنج** when you finish. Each user can have one active timer in the workspace at a time. A timer belongs to the user and task that started it. Stopping it stores the duration and adds an activity event. Reports aggregate finished and currently active entries.
 
-This is the workspace-wide task register. It includes status tabs and filters for team and project. Search in the top bar looks through the current task title, description, assignee, project and team. Open any task to read its details and comments.
+A timer is not stopped automatically when a browser is closed. Reopen the task or active timer's task and stop the timer when the work session ends.
 
-Task fields:
+### Dependencies
 
-- **Title:** required, concise and expressed as an outcome or action.
-- **Description:** context, expected result and acceptance notes.
-- **Assignee:** one workspace member responsible for driving the work.
-- **Team:** optional group used to categorize the work.
-- **Project:** optional shared outcome the task contributes to.
-- **Status:** current stage in the workflow.
-- **Priority:** urgency or importance.
-- **Due date:** target completion date.
-- **Estimate:** optional planned effort in hours.
+In task details, select the prerequisite tasks and save. A task cannot be marked complete until every prerequisite is complete. The server rejects self-dependencies, cross-workspace IDs and dependency cycles. Remove dependencies by saving an empty selection.
 
-## 5. Kanban board
+### Approval workflow
 
-The board groups tasks into five columns: Queued, In progress, Review, Blocked and Done. Drag a card to another column to save its new status on the server. If the network request fails, the workspace is reloaded so the visible state returns to the persisted state.
+When the output is ready, select **ارسال برای تأیید**. The task enters the review state and creates a pending approval request. Owners and admins can approve or reject it. Approval marks the task complete, provided its prerequisites are complete. Rejection returns it to in-progress and stores an optional review comment. The **درخواست‌های تأیید** page lists pending requests.
 
-Suggested working agreement:
+## 4. Projects and teams
 
-- Keep the In progress column limited to work someone is actively advancing.
-- Move work to Review when its output is ready for inspection.
-- Use Blocked only when progress cannot continue without a dependency, answer or decision.
-- Add a comment explaining a blocker or the review request.
+Projects group tasks around a result. Teams represent department/group membership. Team membership does not automatically assign every team member to its tasks. Select task assignees explicitly.
 
-## 6. Calendar
+## 5. Task templates
 
-The calendar is a month view of task due dates. Use the arrows around the month title to move between months. Click a task event to open its detail panel. Tasks without a due date are intentionally absent from the calendar.
+Open **قالب‌های کار**. Owners and admins can create a template with a template name, default task title and description, priority, estimate, project/team, default assignees and checklist items. Any member can use an existing template to create a new task. The task and its checklist are copied; later edits to the task do not change the template.
 
-## 7. Projects
+## 6. Recurring tasks
 
-Projects group tasks around a result. Create a project with a name and a short description, then connect relevant tasks to it. Project progress is calculated as completed tasks divided by all tasks assigned to that project. An empty project displays zero progress because it has no linked tasks.
+Open **کارهای تکرارشونده**. Owners and admins can create rules with:
 
-Project names and descriptions can be edited. Owners and admins can delete a project; related tasks remain in the workspace and become unassigned from that project.
+- Daily, weekly or monthly cadence.
+- An interval (for example every 2 weeks).
+- First execution date.
+- Optional due-date offset.
+- Default project and assignees.
 
-## 8. Team and invitations
+The server checks active rules when someone opens the workspace. Due instances are created as new tasks. Up to 24 missed occurrences per rule are generated in one pass; any remaining missed instances are caught up on later workspace loads. The server must be running and someone must access the workspace. There is no independent background scheduler in this MVP. Pausing a rule stops new task generation without deleting already-created tasks.
 
-The member directory displays account name, email, role and the number of open tasks assigned to each member. Teams are workspace-level labels that can be selected on tasks.
+## 7. Reports
 
-Owners and admins can create teams and invitation links. An invitation:
+Open **گزارش‌های عملکرد** and choose daily or weekly. Reports show tasks created, tasks completed, currently overdue/open task counts and time tracked. Work time is grouped by member and project. The weekly range is Saturday through Friday. Date boundaries are calculated in UTC, not a configurable local timezone.
 
-1. Is generated for one email address.
-2. Has either Member or Admin access.
-3. Expires after seven days.
-4. Can be accepted once.
-5. Requires registration with the same email address as the invitation.
+## 8. Status labels
 
-The invite link is displayed only after creation. Copy it immediately and share it yourself. This MVP does not send email. An administrator can revoke an unused invitation from the Team page.
+Owners and admins can change the displayed label and color for the five built-in statuses in **تنظیمات → نام‌گذاری وضعیت‌ها**. The underlying status keys and number of workflow states remain fixed in this version so task records and Kanban logic remain stable.
 
-Current team limitation: team creation and task-level team assignment are available, but a full many-to-many team membership editor is not part of this MVP.
+## 9. Teams, invitations and permissions
 
-## 9. Activity
+- **Owner:** full workspace administration.
+- **Admin:** can administer teams, invitations, recurring rules, templates, status labels and approvals.
+- **Member:** can work with tasks, comments, checklists, attachments, time tracking, dependencies, template-based task creation and approval requests.
 
-Activity records key actions such as task creation, task edits, status changes, comments, project changes, member joins and invitation creation. It is a useful shared timeline, not a full immutable compliance audit system.
+Team membership is configured from the **تیم‌ها و اعضا** section. The member list is shared across the workspace.
 
-## 10. Task details and comments
+## 10. Notifications and synchronization
 
-Open a task from a list, board or calendar to see its metadata and description. The discussion area allows workspace members to add notes. Comments are stored on the server and appear to other members in the same workspace.
+Notifications are shown behind the bell icon. The app polls the workspace event feed every 3.5 seconds and refreshes the workspace snapshot when another team member changes data. This is near-real-time polling, not WebSocket push. Email and browser push notifications are not included.
 
-## 11. Account settings
+## 11. LAN access
 
-A member can update their display name and sign out. Sign-out deletes the current server session and browser cookie. It does not delete workspace data. Email address changes and password resets are not available in this release.
+The server binds to `0.0.0.0:1939`. The host uses `http://127.0.0.1:1939`; other LAN devices use the host's IPv4 address. The launcher and Settings page display detected addresses. If necessary, set Windows network profile to Private and allow inbound TCP 1939 for the local subnet with the included firewall helper. Do not add router port forwarding or expose the development server to the public internet.
 
-## 12. Keyboard shortcuts
+## 12. Upgrade and backup
 
-- `N`: open the new-task dialog (when focus is not inside a form field).
-- `Ctrl + K` / `⌘ + K`: focus global search.
-- `1` to `5`: navigate Overview, My tasks, All tasks, Board and Calendar.
-- `Esc`: close open dialogs or dismiss the guided tour.
+Before upgrading, stop BottleNeck and copy the entire `data/` folder. The v0.4 startup creates the new productivity tables and initializes status labels for existing workspaces. Existing task/user/project/collaboration records are preserved. Keep both `bottleneck.sqlite3` and `uploads/` together.
 
-## 13. Server, database and safety
+## 13. Creator credit
 
-The FastAPI server serves both the SPA and its API. SQLite is created at `data/bottleneck.sqlite3` unless `BOTTLENECK_DB` points to another file. Passwords are stored using PBKDF2-SHA256 hashes. Session tokens are random values; only token hashes are stored in SQLite. The browser cookie is HttpOnly and SameSite=Lax.
-
-For a trusted LAN, bind to `0.0.0.0` only when access from other devices is needed. For internet-facing use, deploy behind an HTTPS reverse proxy, set `BOTTLENECK_COOKIE_SECURE=1`, configure backups and rate limiting, and provide a secure account recovery path. Do not expose the development server as a production edge server.
+The app includes a small creator popup with the signature «ساخته شده با عشق توسط ژلوفن», Telegram `https://t.me/jelofen1962` and phone link `tel:+989109721962`.
 
 ## 14. Version history
 
-### 0.2.1 · Windows launcher and dependency hotfix · 14 November 2026
+### v0.4.0
 
-- Uses Python 3.12 by default for a consistent local setup.
-- Drops unused `uvicorn[standard]` extras to avoid unnecessary PyYAML/native compilation on Windows.
-- Updates launch scripts and troubleshooting steps.
+Time tracking, daily/weekly reports, recurring rules, task templates, dependencies, approval workflow, editable status labels and 120% desktop UI scale.
 
-### 0.2.0 · Server-backed MVP · 14 November 2026
+### v0.3.0
 
-- Server-side account creation, authentication and session management.
-- Workspace isolation and owner/admin/member roles.
-- Seven-day invitation links with one-time acceptance.
-- SQL persistence for tasks, projects, teams, comments and activity.
-- Guided first-run tour and this handbook inside the app.
-- Responsive Persian RTL workspace with dashboard, lists, Kanban, calendar and team pages.
+Multi-assignee tasks, checklists, private attachments, notifications, team membership editor, LAN port 1939, guided tour and creator popup.
 
-### 0.1.0 · UI preview · 14 November 2026
+### v0.2.1
 
-- Initial Persian RTL front-end preview.
-- Dashboard, tasks, Kanban, calendar, projects, team and activity layouts.
-- Browser-only localStorage sample data and a preliminary SQL schema.
+Windows dependency resolution fix using Python 3.12 and lean Uvicorn installation.
+
+### v0.2.0
+
+Server-side account foundation, SQLite workspace, task/project management and activity logging.
 
 ## 15. Current limitations
 
-No automatic invitation email, password recovery, MFA, multiple workspace switching, team member assignment editor, attachments, task checklist, recurring tasks, dependencies, time tracking, push notifications, real-time collaboration or production deployment setup. These are future development candidates, not silently simulated features.
+No password reset, two-factor authentication, email delivery, multiple workspaces per account, WebSocket push, external scheduler, configurable workflow-state count, time zone setting, report exports or file virus scanning. Use BottleNeck only on a trusted LAN and back up `data/` regularly.
