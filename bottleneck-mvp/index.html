@@ -7,11 +7,11 @@
   <meta name="referrer" content="same-origin" />
   <meta name="author" content="ژلوفن" />
   <meta name="description" content="BottleNeck؛ فضای کاری مشترک برای مدیریت کارها، تیم‌ها و پروژه‌ها." />
-  <title>BottleNeck | فضای کاری تیم</title>
+  <title>BottleNeck | فضای کاری مشترک تیم</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=0.4.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=0.6.0" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -23,7 +23,7 @@
         <p>کارها را ثبت کنید، مسئولیت‌ها را روشن کنید و در یک فضای مشترک تا پایان کار پیش بروید.</p>
         <div class="auth-stamp"><i data-lucide="route"></i><span>یک مسیر روشن برای هر کار</span></div>
       </div>
-      <div class="auth-aside-foot"><span>نسخه ۰.۳.۰</span><span>فضای کاری فارسی و راست‌چین</span></div>
+      <div class="auth-aside-foot"><span>نسخه ۰.۶.۰</span><span>فضای کاری فارسی و راست‌چین</span></div>
     </aside>
     <main class="auth-main">
       <div class="auth-mobile-brand"><span class="brand-mark"><i data-lucide="waypoints"></i></span><span class="brand-name">Bottle<span>Neck</span></span></div>
@@ -36,7 +36,7 @@
             <label class="field"><span>گذرواژه</span><input type="password" id="loginPassword" autocomplete="current-password" required placeholder="گذرواژه حساب" /></label>
             <button class="primary-button wide-button" type="submit">ورود به فضای کار <i data-lucide="arrow-left"></i></button>
           </form>
-          <p class="auth-footnote">حساب ندارید؟ <button class="text-button" data-switch-auth="register">ساخت فضای کاری جدید</button></p>
+          <p class="auth-footnote">حساب ندارید؟ <button class="text-button" data-switch-auth="register">ساخت فضای کاری جدید</button> · <button class="text-button" data-forgot-password>بازیابی گذرواژه</button></p>
         </div>
         <div id="registerPanel" class="auth-panel hidden">
           <p class="eyebrow">شروع یک فضای مشترک</p><h2>حساب و فضای کارتان را بسازید</h2><p class="auth-lead">سازنده فضای کار، مالک آن می‌شود و می‌تواند هم‌تیمی‌ها را دعوت کند.</p>
@@ -79,6 +79,12 @@
         <button class="nav-item" data-page="recurring"><i data-lucide="repeat"></i><span>کارهای تکرارشونده</span></button>
         <button class="nav-item" data-page="templates"><i data-lucide="copy-check"></i><span>قالب‌های کار</span></button>
       </div>
+      <div class="nav-group"><p class="nav-label">فضای مشترک</p>
+        <button class="nav-item" data-page="shared-board"><i data-lucide="layout-grid"></i><span>برد ایده‌های مشترک</span></button>
+        <button class="nav-item" data-page="shared-drive"><i data-lucide="folder-open"></i><span>فایل‌ها و پوشه‌ها</span></button>
+        <button class="nav-item" data-page="shared-notes"><i data-lucide="notebook-pen"></i><span>یادداشت‌های Markdown</span></button>
+        <button class="nav-item" data-page="team-chat"><i data-lucide="messages-square"></i><span>گفت‌وگوی تیمی</span></button>
+      </div>
       <div class="nav-group"><p class="nav-label">راهنما</p>
         <button class="nav-item" data-page="handbook"><i data-lucide="book-open-text"></i><span>راهنمای استفاده</span></button>
         <button class="nav-item" data-page="settings"><i data-lucide="settings-2"></i><span>تنظیمات</span></button>
@@ -92,10 +98,10 @@
 
     <main class="main-area">
       <header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" id="mobileMenu" aria-label="بازکردن منو"><i data-lucide="menu"></i></button><div class="breadcrumb"><span>BottleNeck</span><i data-lucide="chevron-left"></i><strong id="breadcrumbCurrent">نمای کلی</strong></div></div>
-        <div class="topbar-actions"><label class="global-search"><i data-lucide="search"></i><input id="globalSearch" type="search" placeholder="جست‌وجوی کارها و پروژه‌ها..." /><kbd>Ctrl K</kbd></label><button class="icon-button notification-button" id="notificationButton" title="اعلان‌ها"><i data-lucide="bell"></i><b class="notification-dot hidden" id="notificationDot"></b></button><button class="icon-button" id="helpButton" title="شروع راهنما"><i data-lucide="circle-help"></i></button><button class="create-button" id="globalCreate"><i data-lucide="plus"></i><span>کار جدید</span></button></div>
+        <div class="topbar-actions"><select id="workspaceSelect" class="workspace-select" aria-label="انتخاب فضای کاری"><option value="">فضای کاری</option></select><label class="global-search"><i data-lucide="search"></i><input id="globalSearch" type="search" placeholder="جست‌وجوی کارها و پروژه‌ها..." /><kbd>Ctrl K</kbd></label><button class="icon-button notification-button" id="notificationButton" title="اعلان‌ها"><i data-lucide="bell"></i><b class="notification-dot hidden" id="notificationDot"></b></button><button class="icon-button" id="helpButton" title="شروع راهنما"><i data-lucide="circle-help"></i></button><button class="create-button" id="globalCreate"><i data-lucide="plus"></i><span>کار جدید</span></button></div>
       </header>
       <div class="page-content" id="pageContent"></div>
-      <footer class="app-footer"><span>BottleNeck · v0.4.0</span><button class="credit-link" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button></footer>
+      <footer class="app-footer"><span>BottleNeck · v0.6.0</span><button class="credit-link" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button></footer>
     </main>
   </div>
 
@@ -103,10 +109,12 @@
 
   <div class="tour-backdrop hidden" id="tourBackdrop"><div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tourTitle"><div class="tour-topline"><span class="tour-kicker"><i data-lucide="compass"></i> راهنمای شروع BottleNeck</span><button class="icon-button" id="tourClose" aria-label="بستن راهنما"><i data-lucide="x"></i></button></div><div class="tour-progress" id="tourProgress"></div><p class="eyebrow" id="tourStepLabel">گام ۱ از ۷</p><h2 id="tourTitle">به فضای کاری خوش آمدید</h2><p id="tourText"></p><div class="tour-footer"><button class="text-button" id="tourSkip">فعلاً رد شو</button><div><button class="secondary-button" id="tourPrev">قبلی</button><button class="primary-button" id="tourNext">بعدی <i data-lucide="arrow-left"></i></button></div></div></div></div>
 
-  <div class="modal-backdrop" id="creditBackdrop" aria-hidden="true"><section class="modal credit-modal" role="dialog" aria-modal="true" aria-labelledby="creditTitle"><div class="modal-header"><div><p class="eyebrow">یک امضای کوچک</p><h2 id="creditTitle">ساخته شده با عشق توسط <span class="jelofen-name">ژلوفن</span></h2></div><button class="icon-button" data-close-credit aria-label="بستن"><i data-lucide="x"></i></button></div><p class="credit-message">برای ساختن ابزارهایی که کار روزمره را ساده‌تر و همکاری را روشن‌تر می‌کنند.</p><div class="credit-actions"><a class="secondary-button" href="https://t.me/jelofen1962" target="_blank" rel="noopener noreferrer"><i data-lucide="send"></i> تلگرام ژلوفن</a><a class="primary-button jelofen-button" href="tel:+989109721962"><i data-lucide="phone"></i> ‎+98 910 972 1962</a></div><p class="credit-signature">BottleNeck · v0.4.0</p></section></div>
+  <div class="modal-backdrop" id="creditBackdrop" aria-hidden="true"><section class="modal credit-modal" role="dialog" aria-modal="true" aria-labelledby="creditTitle"><div class="modal-header"><div><p class="eyebrow">یک امضای کوچک</p><h2 id="creditTitle">ساخته شده با عشق توسط <span class="jelofen-name">ژلوفن</span></h2></div><button class="icon-button" data-close-credit aria-label="بستن"><i data-lucide="x"></i></button></div><p class="credit-message">برای ساختن ابزارهایی که کار روزمره را ساده‌تر و همکاری را روشن‌تر می‌کنند.</p><div class="credit-actions"><a class="secondary-button" href="https://t.me/jelofen1962" target="_blank" rel="noopener noreferrer"><i data-lucide="send"></i> تلگرام ژلوفن</a><a class="primary-button jelofen-button" href="tel:+989109721962"><i data-lucide="phone"></i> ‎+98 910 972 1962</a></div><p class="credit-signature">BottleNeck · v0.6.0</p></section></div>
 
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-  <script src="/static/app.js?v=0.4.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+  <script src="/static/app.js?v=0.6.0"></script>
 </body>
 </html>

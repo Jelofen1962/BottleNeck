@@ -1,8 +1,19 @@
-# BottleNeck v0.4.0
+# BottleNeck v0.6.0 — MVP Release
 
-BottleNeck is a Persian RTL team workspace served by FastAPI and backed by SQLite. It runs on a trusted local network on TCP port **1939**. The desktop interface is scaled to approximately **120%**; the scale returns to 100% on narrow/mobile screens.
+BottleNeck is a Persian-first, RTL team workspace built with FastAPI, SQLite, HTML, CSS and vanilla JavaScript. It combines task and project management, productivity tracking, shared concept boards, shared files/folders, Markdown notes, team chat, multi-workspace accounts, configurable workspace permissions, TOTP two-factor authentication and automated backups.
 
-## Start on Windows
+The desktop UI keeps the project's approximately 120% scale; narrow screens return to normal scale. The launcher binds to `0.0.0.0:1939` by default for trusted LAN access.
+
+## 1. Requirements
+
+- Windows 10/11, Linux or macOS.
+- [uv](https://docs.astral.sh/uv/).
+- Python 3.12 is installed/managed by uv during setup.
+- For LAN use on Windows, set the network profile to **Private**.
+
+The project deliberately uses plain `uvicorn` plus the pure-Python `websockets` package, not `uvicorn[standard]`; the WebSocket protocol is installed explicitly while PyYAML and Microsoft C++ Build Tools are not required by the launcher.
+
+## 2. Start on Windows
 
 1. Extract the ZIP.
 2. Open PowerShell in the `bottleneck-mvp` folder.
@@ -12,124 +23,171 @@ BottleNeck is a Persian RTL team workspace served by FastAPI and backed by SQLit
    .\start.ps1
    ```
 
-The launcher uses Python 3.12 through `uv`, installs the small FastAPI/Uvicorn dependency set, and starts the server at `0.0.0.0:1939`.
+The launcher runs `uv sync --python 3.12` and starts Uvicorn on `0.0.0.0:1939`.
 
-Open BottleNeck on the host at `http://127.0.0.1:1939`. Other devices on the same trusted LAN use `http://<host-LAN-IP>:1939`; the exact detected URLs are printed by the launcher and shown in **Settings → Local network access**.
+- Host computer: `http://127.0.0.1:1939`
+- Other devices on the same LAN: `http://<host-LAN-IP>:1939`
+- API reference: `http://<host-LAN-IP>:1939/api/docs`
 
-If a device cannot connect, make sure the Windows network profile is Private and run `allow-lan-firewall.ps1` once from an elevated PowerShell. The helper creates an inbound rule for TCP 1939 scoped to the local subnet and Private profile. Do not port-forward this app or expose the development server to the public internet.
+The launcher prints detected LAN URLs. They are also listed in **Settings → Local network access**. If Windows Firewall blocks other devices, set the network profile to Private and run `allow-lan-firewall.ps1` once from an elevated PowerShell window. The helper creates a TCP 1939 rule limited to the Private profile and local subnet.
 
-## Start on Linux / macOS
+## 3. Start on Linux / macOS
 
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-Or manually:
+Manual equivalent:
 
 ```bash
 uv sync --python 3.12
-BOTTLENECK_PORT=1939 uv run --python 3.12 uvicorn main:app --host 0.0.0.0 --port 1939
+uv run --python 3.12 uvicorn main:app --host 0.0.0.0 --port 1939
 ```
 
-## Features in v0.4.0
+Stop the server with `Ctrl+C`. The host computer must remain on and the BottleNeck process must remain running for other devices to use the workspace.
 
-### Workspace and collaboration
+## 4. First-run setup
 
-- Server-side accounts, password hashing, HttpOnly sessions, workspace membership and invitations.
-- Owner, admin and member roles.
-- Multiple assignees, team membership, project grouping, comments, checklists, private attachments (10 MB per file), in-app notifications and activity history.
-- LAN collaboration through a workspace event feed polled every 3.5 seconds.
+1. Open BottleNeck on the host computer.
+2. Register the first account and create the first workspace. That account becomes the initial installation owner.
+3. Invite colleagues from **Teams and Members**. Invitation links are email-specific and expire after seven days. Share them manually unless you separately configure an email system.
+4. Create teams and assign members to them.
+5. Use the workspace selector in the top bar to switch between workspaces or create another workspace.
+6. Use **Settings** to review account security, email preferences, role permissions and backup status.
 
-### Productivity and workflow
+A signed-in user can belong to more than one workspace. Workspace data is scoped to the active membership/session.
 
-- **Time tracking:** start/stop a personal timer on a task. A user can have one active timer at a time. Completed entries are stored with user, task, start, end and duration.
-- **Reports:** daily and Persian-weekly summaries for tasks created/completed, overdue/open work and time tracked by member and project. Weekly reports run Saturday–Friday. Report date boundaries are evaluated in UTC.
-- **Recurring work:** daily, weekly and monthly rules with an interval, initial execution date, optional due-date offset and default assignees. Due work is generated when a workspace is opened. The host server therefore needs to be running and a member needs to open the workspace for the scheduler catch-up to run; this release does not run a separate background scheduler.
-- **Task templates:** reusable task title, description, priority, estimate, default assignees, project/team and starter checklist. Members can create tasks from templates; admins can create and remove templates.
-- **Dependencies:** tasks can depend on other tasks in the same workspace. The API blocks dependency cycles and prevents a task from being marked complete until all prerequisites are complete.
-- **Approval workflow:** members can send a task for review. Owners/admins can approve it (which completes the task) or reject it (which returns it to in-progress with an optional comment).
-- **Custom status presentation:** owners/admins can customize labels and colors for the five built-in workflow states. The underlying five state keys remain fixed for this MVP.
-- **120% desktop scale:** the application uses a 1.2 page zoom on desktop Chromium browsers and resets to normal scale on narrow screens.
+## 5. What is in v0.6.0
 
-## First run
+### Tasks and productivity
 
-1. Open the host URL.
-2. Select **ساخت فضای کار** and register the first account. This account becomes the workspace owner.
-3. Complete the guided tour, or revisit it using the help icon.
-4. Create projects and teams, then invite colleagues from **تیم‌ها و اعضا**. Invitations are manually shared links valid for seven days.
-5. Create tasks or task templates, define dependencies, add checklists and start timers as work begins.
-6. Use **گزارش‌های عملکرد** for daily/weekly summaries and **درخواست‌های تأیید** for pending reviews.
+- Tasks, projects, teams, Kanban, calendar, multi-assignee tasks, comments, checklists and private task attachments (10 MB per task attachment).
+- Dependencies with cycle validation and a completion guard while prerequisites remain open.
+- Time tracking with one active timer per user, estimates versus tracked time and daily/weekly reports.
+- Reusable task templates, recurring-task rules and task approval requests.
+- Workspace-specific labels/colors for the five built-in task statuses.
+- In-app notifications, activity history and team presence.
 
-## Recurring task behavior
+### Shared workspace
 
-Rules are evaluated whenever a signed-in user requests the workspace bootstrap data. If a rule is due, the server creates each missed occurrence up to 24 catch-up instances per rule in one pass, then advances its next date. Further overdue instances are generated on subsequent workspace loads. For continuous scheduled creation even when nobody opens the app, a future release should add a dedicated scheduler service.
+- Shared concept boards with movable sticky notes, plain-text cards, links and task links.
+- Shared drive with nested folders, Markdown notes and file uploads (50 MB per shared file).
+- Workspace-wide, team-only and password-protected sharing.
+- Per-role read/write ACL settings for shared folders/files; parent-folder restrictions are inherited by descendants.
+- XHR upload progress and authenticated, permission-checked file downloads.
+- GFM Markdown preview (headings, lists, task lists, tables, links, quotes and fenced code) sanitized with DOMPurify.
+- Workspace chat and team-specific chat channels.
+- Authenticated WebSocket event stream for shared workspace updates. Presence refresh remains periodic (about 12 seconds).
 
-## Database and file storage
+### v0.6.0 administration and security
 
-Default locations:
+- Multiple workspaces per account, workspace creation and workspace switching.
+- Configurable permission matrix for the `admin` and `member` roles. The workspace owner always has full access within their workspace.
+- Shared-drive role-level read/write rules.
+- TOTP two-factor authentication with ten single-use recovery codes. Each login challenge expires after five minutes and allows up to five failed code attempts.
+- Password reset links expire after 30 minutes and are single-use. Public self-service email delivery requires SMTP. A workspace admin can also create a reset link for a member and share it manually over a trusted channel.
+- Optional SMTP delivery for notification emails and password reset messages.
+- Automatic backup scheduler (24-hour default interval; 14 retained copies by default) plus manual backup creation and download.
+- Backups include the SQLite database, task uploads, shared files and a manifest. They are ZIP archives saved under `backups/`.
+- Optional HTTPS directly through Uvicorn certificate/key settings in the launch scripts.
+- Authenticated WebSocket connections are checked against the server-side session during the connection lifetime.
+
+## 6. Multi-workspace roles and permissions
+
+Each workspace has `owner`, `admin` and `member` memberships. The owner can configure the admin/member permission matrix in Settings. The owner has full permissions inside that workspace. Examples of configurable permissions include workspace management, member invitations/management, team management, report viewing, deleting tasks/projects and managing shared items.
+
+The backup archive contains the database and files for the entire BottleNeck installation, not just one workspace. For this reason, backup listing, creation and download are restricted to the **initial installation owner** (the account that created the first workspace). A later workspace owner does not automatically become the instance-wide backup administrator.
+
+## 7. Account security
+
+### Two-factor authentication
+
+In **Settings → Account security**:
+
+1. Start TOTP setup.
+2. Add the secret key or `otpauth` URI to an authenticator app.
+3. Store the ten recovery codes somewhere safe. They are shown only during setup.
+4. Enter the current six-digit TOTP code to enable two-factor authentication.
+
+A recovery code is eight hexadecimal characters and can be used only once in place of a TOTP code. Keep the server's `data/` directory private; it contains the TOTP secret needed to verify sign-ins. If the authenticator is lost, use a recovery code. If both the authenticator and all recovery codes are lost, an administrator must perform an out-of-band account recovery; there is no self-service TOTP reset endpoint in this MVP.
+
+### Password reset
+
+The public **Forgot password** action sends a reset email only when SMTP is configured. The response does not reveal whether an email address exists. Reset links are single-use and expire after 30 minutes; completing a reset revokes that account's existing sessions.
+
+If SMTP is not configured, the public form cannot deliver the link. A workspace admin can generate a member reset link from the member-management interface and give it to the person through a trusted channel. Do not paste reset links into public chats.
+
+## 8. Email configuration (optional)
+
+Set environment variables before running the launcher:
+
+| Variable | Default | Description |
+|---|---:|---|
+| `BOTTLENECK_SMTP_HOST` | unset | SMTP server hostname |
+| `BOTTLENECK_SMTP_PORT` | `587` | SMTP server port |
+| `BOTTLENECK_SMTP_FROM` | unset | Sender address |
+| `BOTTLENECK_SMTP_STARTTLS` | `1` | Use STARTTLS when `1` |
+| `BOTTLENECK_SMTP_USER` | unset | Optional SMTP username |
+| `BOTTLENECK_SMTP_PASSWORD` | unset | Optional SMTP password |
+
+PowerShell example (replace values with your SMTP provider's settings):
+
+```powershell
+$env:BOTTLENECK_SMTP_HOST = "smtp.example.com"
+$env:BOTTLENECK_SMTP_PORT = "587"
+$env:BOTTLENECK_SMTP_FROM = "bottleneck@example.com"
+$env:BOTTLENECK_SMTP_STARTTLS = "1"
+$env:BOTTLENECK_SMTP_USER = "bottleneck@example.com"
+$env:BOTTLENECK_SMTP_PASSWORD = "YOUR_SMTP_PASSWORD"
+.\start.ps1
+```
+
+Users must enable email notifications in their own notification preferences. SMTP is used for the notification queue and public password-reset email. Verify sender authentication and delivery with your provider; BottleNeck does not include a mail-provider setup wizard.
+
+## 9. HTTPS configuration (optional)
+
+For a trusted LAN MVP, the launcher defaults to HTTP. To enable Uvicorn HTTPS, provide a certificate and private key before starting:
+
+```powershell
+$env:BOTTLENECK_SSL_CERTFILE = "C:\certs\bottleneck.crt"
+$env:BOTTLENECK_SSL_KEYFILE = "C:\certs\bottleneck.key"
+.\start.ps1
+```
+
+The launcher then enables secure session cookies. Use a certificate trusted by the devices that will connect. Do not use an untrusted self-signed certificate for public access. For a public release, use a properly maintained reverse proxy, a valid certificate, access controls, firewall rules and a security review; this package is not a hardened public-internet deployment by itself.
+
+## 10. Backups and restore
+
+Environment variables:
+
+| Variable | Default | Description |
+|---|---:|---|
+| `BOTTLENECK_BACKUP_INTERVAL_HOURS` | `24` | Automatic backup interval (minimum 1 hour) |
+| `BOTTLENECK_BACKUP_RETENTION` | `14` | Number of recent backups to retain (minimum 2) |
+| `BOTTLENECK_BACKUP_DIR` | `./backups` | Backup archive directory |
+
+Automatic backups begin after the first account exists. The initial installation owner can create a manual backup from Settings. Each ZIP includes:
 
 ```text
+manifest.json
 data/
 ├── bottleneck.sqlite3
-└── uploads/
-    └── <workspace-id>/
+├── uploads/          # task attachments
+└── shared/           # shared-drive files
 ```
 
-The database uses SQLite WAL mode. **Back up the complete `data/` directory**, including uploads. For a simple offline backup, stop BottleNeck first and then copy `data/`. Do not copy only the `.sqlite3` file while the server is writing.
+To restore:
 
-On startup, `schema.sql` creates the new v0.4 tables. Existing v0.2/v0.3 user, workspace, task, project, comment, checklist, attachment and activity data is retained. Existing workspace status labels are initialized with the default five statuses. Back up `data/` before upgrading any existing installation.
+1. Stop BottleNeck.
+2. Copy the current `data/` folder and `backups/` folder somewhere safe before changing anything.
+3. Extract the selected backup ZIP into the BottleNeck installation directory, allowing its `data/` paths to be restored.
+4. Confirm the archive contains `data/bottleneck.sqlite3`, `data/uploads/` and `data/shared/` as appropriate.
+5. Start BottleNeck and verify login, tasks and shared files.
 
-## Configuration
+Backups are stored on the same host by default. They are not automatically copied off-device or to cloud storage. Keep a separate off-device copy for disaster recovery. Stop the application before a manual folder-level restore.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `BOTTLENECK_DB` | `./data/bottleneck.sqlite3` | SQLite database path |
-| `BOTTLENECK_UPLOAD_DIR` | `./data/uploads` | Uploaded file directory |
-| `BOTTLENECK_SESSION_DAYS` | `14` | Session lifetime |
-| `BOTTLENECK_COOKIE_SECURE` | `0` | Set to `1` behind HTTPS |
-| `BOTTLENECK_PORT` | `1939` | Port used for LAN and invite URLs |
-
-## Role overview
-
-| Feature | Owner | Admin | Member |
-|---|:---:|:---:|:---:|
-| View workspace tasks, projects and teams | Yes | Yes | Yes |
-| Create/edit tasks, comments and checklists | Yes | Yes | Yes |
-| Use task timers and view reports | Yes | Yes | Yes |
-| Set dependencies and request approval | Yes | Yes | Yes |
-| Create tasks from templates | Yes | Yes | Yes |
-| Manage teams, invitations and memberships | Yes | Yes | No |
-| Create/manage recurring rules | Yes | Yes | No |
-| Create/delete templates | Yes | Yes | No |
-| Customize status labels/colors | Yes | Yes | No |
-| Approve/reject task approvals | Yes | Yes | No |
-
-## API endpoints
-
-- `GET /api/health` – server/version health.
-- `GET /api/bootstrap` – workspace snapshot.
-- `GET /api/network` – detected LAN URLs.
-- `GET /api/docs` – interactive API documentation.
-- `GET /api/reports?period=daily|weekly` – reports.
-- `GET /api/recurring` / `POST /api/recurring` – recurring rules.
-- `GET /api/templates` / `POST /api/templates` – task templates.
-- `GET /api/tasks/{id}/time` – task time entries.
-- `GET /api/tasks/{id}/dependencies` – dependency configuration.
-- `GET /api/tasks/{id}/approvals` – task approval history.
-
-## Known MVP boundaries
-
-- No automatic email delivery, password reset or two-factor authentication.
-- Each account still has one workspace.
-- Collaboration uses polling, not WebSockets.
-- Recurring tasks are generated on workspace loads, not by a continuously running scheduler.
-- Only the five built-in status states are supported; their labels and colors are customizable, but adding/removing workflow states is not supported.
-- Reports use UTC boundaries. A later release can add configurable workspace timezone and export formats.
-- No attachment virus scanning. Use only with trusted team members and uploads.
-- No HTTPS is configured for LAN HTTP. Do not expose this development server directly to the internet.
-
-## Project structure
+## 11. Runtime data layout
 
 ```text
 bottleneck-mvp/
@@ -139,12 +197,70 @@ bottleneck-mvp/
 ├── static/
 │   ├── app.js
 │   └── styles.css
-├── data/                       # created on first run
-├── README.md
-├── HANDBOOK.md
-├── CHANGELOG.md
-├── pyproject.toml
-├── start.ps1
-├── start.sh
-└── allow-lan-firewall.ps1
+├── data/                         # created on first start
+│   ├── bottleneck.sqlite3
+│   ├── uploads/
+│   └── shared/
+└── backups/                      # created when first backup is made
 ```
+
+SQLite uses WAL mode. The entire `data/` directory is operational data and must not be placed on a public static web path. Do not delete or replace it when installing a new release.
+
+## 12. Configuration reference
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BOTTLENECK_DB` | `./data/bottleneck.sqlite3` | SQLite database location |
+| `BOTTLENECK_UPLOAD_DIR` | `./data/uploads` | Task attachment storage |
+| `BOTTLENECK_SHARED_DIR` | `<DB parent>/shared` | Shared-drive file storage |
+| `BOTTLENECK_BACKUP_DIR` | `./backups` | Backup ZIP location |
+| `BOTTLENECK_SESSION_DAYS` | `14` | Session lifetime in days |
+| `BOTTLENECK_COOKIE_SECURE` | `0` | Set automatically by launcher for HTTPS; `1` for secure cookies |
+| `BOTTLENECK_HOST` | `0.0.0.0` | Uvicorn bind host |
+| `BOTTLENECK_PORT` | `1939` | HTTP/HTTPS port |
+| `BOTTLENECK_SSL_CERTFILE` | unset | Optional TLS certificate path |
+| `BOTTLENECK_SSL_KEYFILE` | unset | Optional TLS private key path |
+
+## 13. Useful endpoints
+
+- `GET /api/health` — application/version health.
+- `GET /api/bootstrap` — active workspace snapshot.
+- `GET/POST /api/workspaces` and `POST /api/workspaces/switch` — workspace listing/creation/switching.
+- `GET/PUT /api/permissions` — role permission matrix.
+- `GET /api/security` — current account security status.
+- `POST /api/security/totp/setup`, `/enable`, `/disable` — TOTP management.
+- `POST /api/auth/password-reset/request` and `/complete` — password reset.
+- `GET/POST /api/backups` — list/create instance backups (initial installation owner only).
+- `GET /api/backups/{id}/download` — download a backup archive (initial installation owner only).
+- `WS /ws` — authenticated workspace event stream.
+- `GET /api/docs` — interactive API documentation.
+
+## 14. Upgrade from v0.5.0
+
+1. Stop the old server with `Ctrl+C`.
+2. Make a separate copy of the complete `data/` directory, including uploads and shared files.
+3. Extract v0.6.0 into a new directory.
+4. Copy the old `data/` directory into the new `bottleneck-mvp/` directory.
+5. Start with `start.ps1` or `start.sh`.
+
+The v0.6 schema adds the security, multi-workspace permissions, recovery code, email queue and backup tables. Existing users, workspaces, tasks, projects, task assignments, time entries, boards, files, notes and chats remain in the database. The upgrade was integration-tested against a populated v0.5.0 schema. Do not run `schema.sql` manually against the live database; the application applies it on startup.
+
+## 15. Known MVP limitations and security notes
+
+- BottleNeck is designed for a trusted LAN/private network MVP. Do not expose port 1939 directly to the public internet or port-forward it on your router.
+- HTTP is the default. Use HTTPS for any network where traffic cannot be trusted.
+- Login password attempts and public password-reset requests do not have a configurable global IP rate limiter in this MVP. Use it on a trusted network and avoid publishing the login endpoint to the internet.
+- TOTP secrets are stored in the host's SQLite database; protect the entire `data/` directory and host account.
+- Email delivery depends on the SMTP provider and correct environment variables. No email verification or bounce-management system is included.
+- Backups are local to the host unless an operator copies them elsewhere. Protect backup ZIPs: they contain the full database and private files.
+- Shared files are not scanned for malware. Only allow trusted users to upload files and scan files externally if required by your organization.
+- Shared file uploads have a 50 MB cap; task attachments have a 10 MB cap.
+- Rich Markdown preview and some visual assets use external CDNs. Offline browsers retain the Markdown source but may not render a rich preview or remote fonts/icons.
+- Simultaneous edits to the exact same note use last-write-wins behavior; there is no character-level collaborative editor or note revision history.
+- WebSocket delivers workspace events. Presence still refreshes periodically, and updates require a live server connection.
+- Task recurrence and report date boundaries use UTC. Workspace-specific time zones are not configurable.
+- A browser-level automated walkthrough was not available in the build environment; release verification used API integration tests, database migration tests, Python/JavaScript syntax checks and archive integrity checks.
+
+## Creator credit
+
+The application includes a compact popup with **«ساخته شده با عشق توسط ژلوفن»**, Telegram `https://t.me/jelofen1962` and phone link `tel:+989109721962`.

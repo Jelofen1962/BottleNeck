@@ -1,5 +1,5 @@
--- BottleNeck v0.3.0 SQLite schema
--- Existing v0.2.x databases are upgraded automatically at server startup.
+-- BottleNeck v0.6.0 SQLite schema
+-- Existing v0.5.0 databases are upgraded automatically at server startup.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -247,3 +247,158 @@ CREATE INDEX IF NOT EXISTS idx_dependencies_task ON task_dependencies(task_id, d
 CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_rules(workspace_id, is_active, next_run_on);
 CREATE INDEX IF NOT EXISTS idx_templates_workspace ON task_templates(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_approvals_workspace_status ON task_approvals(workspace_id, status, requested_at DESC);
+
+-- BottleNeck v0.5.0 shared knowledge and collaboration modules.
+CREATE TABLE IF NOT EXISTS shared_boards (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  access_mode TEXT NOT NULL DEFAULT 'workspace' CHECK(access_mode IN ('workspace','team','password')),
+  team_id TEXT REFERENCES teams(id) ON DELETE SET NULL,
+  password_hash TEXT,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shared_board_items (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  board_id TEXT NOT NULL REFERENCES shared_boards(id) ON DELETE CASCADE,
+  item_type TEXT NOT NULL CHECK(item_type IN ('note','text','link','task')),
+  title TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+  x REAL NOT NULL DEFAULT 24,
+  y REAL NOT NULL DEFAULT 24,
+  width REAL NOT NULL DEFAULT 260,
+  color TEXT NOT NULL DEFAULT 'butter',
+  created_by TEXT NOT NULL REFERENCES users(id),
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shared_nodes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  parent_id TEXT REFERENCES shared_nodes(id) ON DELETE CASCADE,
+  node_type TEXT NOT NULL CHECK(node_type IN ('folder','file','text')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  stored_name TEXT,
+  original_name TEXT,
+  content_type TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  access_mode TEXT NOT NULL DEFAULT 'workspace' CHECK(access_mode IN ('workspace','team','password')),
+  team_id TEXT REFERENCES teams(id) ON DELETE SET NULL,
+  password_hash TEXT,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  channel_type TEXT NOT NULL DEFAULT 'workspace' CHECK(channel_type IN ('workspace','team')),
+  team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspace_presence (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  page TEXT NOT NULL DEFAULT 'overview',
+  last_seen TEXT NOT NULL,
+  PRIMARY KEY(workspace_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_boards_workspace ON shared_boards(workspace_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_board_items_board ON shared_board_items(board_id,y,x);
+CREATE INDEX IF NOT EXISTS idx_shared_nodes_parent ON shared_nodes(workspace_id,parent_id,node_type,updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_channel ON chat_messages(workspace_id,channel_type,team_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON workspace_presence(workspace_id,last_seen DESC);
+
+-- BottleNeck v0.6.0: multi-workspace, account security, permissions and operations.
+CREATE TABLE IF NOT EXISTS login_challenges (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_security (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  totp_secret TEXT,
+  totp_enabled INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id,code_hash)
+);
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspace_role_permissions (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('owner','admin','member')),
+  permission_key TEXT NOT NULL,
+  allowed INTEGER NOT NULL DEFAULT 0,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(workspace_id,role,permission_key)
+);
+CREATE TABLE IF NOT EXISTS shared_node_role_acl (
+  node_id TEXT NOT NULL REFERENCES shared_nodes(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('owner','admin','member')),
+  can_read INTEGER NOT NULL DEFAULT 1,
+  can_write INTEGER NOT NULL DEFAULT 0,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(node_id,role)
+);
+CREATE TABLE IF NOT EXISTS backup_catalog (
+  id TEXT PRIMARY KEY,
+  filename TEXT NOT NULL UNIQUE,
+  size_bytes INTEGER NOT NULL,
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  is_automatic INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  email_enabled INTEGER NOT NULL DEFAULT 0,
+  assigned_enabled INTEGER NOT NULL DEFAULT 1,
+  mentions_enabled INTEGER NOT NULL DEFAULT 1,
+  deadlines_enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_email_jobs (
+  id TEXT PRIMARY KEY,
+  notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed','skipped')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  sent_at TEXT,
+  UNIQUE(notification_id)
+);
+CREATE INDEX IF NOT EXISTS idx_login_challenges_expiry ON login_challenges(expires_at);
+CREATE INDEX IF NOT EXISTS idx_totp_recovery_user ON totp_recovery_codes(user_id,used_at);
+CREATE INDEX IF NOT EXISTS idx_password_reset_expiry ON password_reset_tokens(expires_at,used_at);
+CREATE INDEX IF NOT EXISTS idx_backup_catalog_created ON backup_catalog(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_jobs_status ON notification_email_jobs(status,created_at);

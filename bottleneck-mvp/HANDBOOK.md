@@ -1,117 +1,249 @@
-# BottleNeck user handbook – v0.4.0
+# راهنمای کامل BottleNeck · نسخه ۰.۶.۰
 
-BottleNeck is a Persian RTL workspace for planning tasks, coordinating teams and reviewing actual work. The host machine stores the SQLite database and uploaded files. Teammates on the same trusted LAN open the host's IP address on port 1939.
+BottleNeck یک فضای کاری فارسی و راست‌چین برای برنامه‌ریزی کار، پیگیری بهره‌وری، هماهنگی تیم و نگهداری دانش مشترک است. رابط دسکتاپ با مقیاس تقریبی ۱۲۰٪ طراحی شده و در نمایشگرهای باریک به مقیاس عادی برمی‌گردد. داده‌ها روی رایانه میزبان ذخیره می‌شوند؛ اعضا از طریق مرورگر به همان سرور وصل می‌شوند.
 
-## 1. First login and workspace
+## ۱. شروع و ثبت‌نام
 
-The first registered account becomes the owner and creates the workspace. Use **تیم‌ها و اعضا** to create teams and invite colleagues. Invitations are manually shared, email-specific and valid for seven days. The invited person must register with the invited email.
+1. سرور را روی رایانه میزبان اجرا کنید.
+2. در مرورگر به `http://127.0.0.1:1939` بروید.
+3. اولین حساب را با نام، ایمیل، گذرواژه و نام فضای کاری ثبت کنید. اولین حساب، مالک اولیه نصب و مالک فضای کاری اول می‌شود.
+4. از بخش تیم‌ها و اعضا برای همکاران دعوت‌نامه بسازید. دعوت‌نامه به یک ایمیل مشخص است و ۷ روز اعتبار دارد.
+5. فرد دعوت‌شده می‌تواند با همان ایمیل ثبت‌نام کند یا اگر از قبل حساب دارد ابتدا وارد شود و سپس دعوت را بپذیرد.
 
-## 2. Dashboard and task views
+گذرواژه حساب حداقل ۸ نویسه است و به‌شکل PBKDF2-HMAC-SHA256 هش می‌شود. نشست به‌صورت کوکی HttpOnly و به‌طور پیش‌فرض برای ۱۴ روز نگهداری می‌شود.
 
-- **نمای کلی:** current workload, overdue tasks, progress, latest activity and member workload.
-- **کارهای من:** tasks where your account is assigned.
-- **همه کارها:** the workspace task table with status/team filters.
-- **برد کانبان:** drag a task card to another workflow column. The status change is persisted on the server.
-- **تقویم:** tasks with due dates, in a Saturday-first calendar.
+## ۲. چند فضای کاری برای یک حساب
 
-Use `N` to open the new-task form. Use `Ctrl + K` to focus global search.
+هر حساب می‌تواند در چند فضای کاری عضویت داشته باشد. انتخابگر بالای صفحه فضای فعال را نشان می‌دهد.
 
-## 3. Task details
+- برای ساخت فضای جدید، از همان انتخابگر گزینه ساخت فضای کاری تازه را انتخاب کنید.
+- برای جابه‌جایی، فضای مورد نظر را انتخاب کنید؛ برنامه داده‌های همان فضا را دوباره بارگذاری می‌کند.
+- عضویت، نقش و داده‌ها برای هر فضا جداگانه نگهداری می‌شوند.
+- کاربر فقط فضاهایی را در انتخابگر می‌بیند که عضو آنهاست.
 
-A task may have multiple assignees, a team, project, priority, due date and estimated hours. Open a task to manage its checklist, private attachments and discussion.
+اگر با دعوت‌نامه وارد فضای جدیدی می‌شوید، ابتدا با حساب خود وارد شوید و سپس دعوت را بپذیرید. عضویت در یک تیم با عضویت در یک فضای کاری متفاوت است.
 
-### Checklists
+## ۳. نقش‌ها و مدیریت دسترسی
 
-Add a short action item, check it when finished, reopen it if needed, or remove it. The checklist completion count is visible in task lists and on Kanban cards.
+نقش‌های پایه:
 
-### Attachments
+- **مالک:** دسترسی کامل به همان فضای کاری؛ می‌تواند مجوزهای نقش‌های دیگر را تنظیم کند.
+- **مدیر:** دسترسی مدیریتی بر اساس مجوزهایی که مالک فعال کرده است.
+- **عضو:** دسترسی روزمره به کارها و همکاری، طبق مجوزهای نقش عضو.
 
-Upload PDF, common images, Office documents, CSV, TXT or ZIP files. Maximum size is 10 MB per file. Files are stored outside the static web directory and downloads require a valid session and membership in the same workspace. Admins can remove any attachment; members can remove files they uploaded.
+در تنظیمات و بخش «مجوزهای نقش‌ها»، مالک می‌تواند برخی دسترسی‌ها را برای مدیر و عضو فعال یا غیرفعال کند؛ از جمله مدیریت فضای کاری، دعوت/مدیریت اعضا، مدیریت تیم‌ها، مشاهده گزارش‌ها، حذف کارها و پروژه‌ها و مدیریت فضای مشترک. مالک همیشه مجوز کامل در همان فضا دارد.
 
-### Time tracking
+پشتیبان BottleNeck شامل تمام پایگاه داده و فایل‌های نصب است، نه فقط یک فضای کاری. به همین دلیل فقط **مالک اولیه نصب** (حسابی که اولین فضای کاری را ساخته) می‌تواند نسخه‌های پشتیبان کل نصب را ببیند، ایجاد کند یا دریافت کند. مالک یک فضای کاری بعدی به‌صورت خودکار مدیر کل نصب نمی‌شود.
 
-Open task details and select **شروع زمان‌سنج** when you begin working. Select **توقف زمان‌سنج** when you finish. Each user can have one active timer in the workspace at a time. A timer belongs to the user and task that started it. Stopping it stores the duration and adds an activity event. Reports aggregate finished and currently active entries.
+## ۴. راهنمای صفحه‌ها
 
-A timer is not stopped automatically when a browser is closed. Reopen the task or active timer's task and stop the timer when the work session ends.
+- **نمای کلی:** تعداد کارها، کارهای فعال/تکمیل‌شده/عقب‌افتاده، موعدهای نزدیک، فعالیت تازه و وضعیت کلی فضای کاری.
+- **کارهای من:** کارهایی که حساب شما یکی از مسئولان آنهاست.
+- **همه کارها:** فهرست کامل کارهای فضای فعال با جست‌وجو و فیلتر.
+- **برد کانبان:** ستون‌های وضعیت و جابه‌جایی کارت‌ها.
+- **تقویم:** نمایش کارهایی که موعد انجام دارند.
+- **پروژه‌ها:** گروه‌بندی کارها بر اساس خروجی یا هدف.
+- **تیم‌ها و اعضا:** ساخت تیم، مدیریت اعضا و دعوت‌نامه‌ها.
+- **گزارش فعالیت:** رویدادهای مهم کارها، فضای مشترک، فایل‌ها و گفت‌وگو.
+- **گزارش عملکرد:** آمار روزانه/هفتگی و زمان ثبت‌شده.
+- **درخواست‌های تأیید:** کارهایی که برای بازبینی نهایی ارسال شده‌اند.
+- **کارهای تکرارشونده:** قوانین تولید کارهای روزانه، هفتگی یا ماهانه.
+- **قالب‌های کار:** ساخت کار جدید بر اساس یک ساختار ذخیره‌شده.
+- **برد ایده‌های مشترک:** بوم آزاد برای یادداشت‌ها، متن، لینک و اتصال به کارها.
+- **فایل‌ها و پوشه‌های مشترک:** نگهداری ساختارمند فایل و محتوا.
+- **یادداشت‌های Markdown:** ویرایش و پیش‌نمایش یادداشت‌های مشترک.
+- **گفت‌وگوی تیمی:** کانال عمومی فضای کاری و کانال اختصاصی تیم‌ها.
+- **راهنما:** همین مستند درون برنامه.
+- **تنظیمات:** امنیت حساب، فضاهای کاری، اعلان، مجوزها، شبکه و پشتیبان‌گیری.
 
-### Dependencies
+میان‌برهای اصلی: `N` برای ساخت کار، `Ctrl + K` برای جست‌وجو و `Esc` برای بستن پنجره. دکمه راهنما تور شروع را دوباره اجرا می‌کند.
 
-In task details, select the prerequisite tasks and save. A task cannot be marked complete until every prerequisite is complete. The server rejects self-dependencies, cross-workspace IDs and dependency cycles. Remove dependencies by saving an empty selection.
+## ۵. ساخت و پیگیری کار
 
-### Approval workflow
+در فرم کار این موارد را مشخص کنید:
 
-When the output is ready, select **ارسال برای تأیید**. The task enters the review state and creates a pending approval request. Owners and admins can approve or reject it. Approval marks the task complete, provided its prerequisites are complete. Rejection returns it to in-progress and stores an optional review comment. The **درخواست‌های تأیید** page lists pending requests.
+- عنوان و توضیحات؛
+- یک یا چند مسئول؛
+- تیم و پروژه؛
+- وضعیت و اولویت؛
+- موعد انجام؛
+- زمان تخمینی.
 
-## 4. Projects and teams
+پنج وضعیت پایه:
 
-Projects group tasks around a result. Teams represent department/group membership. Team membership does not automatically assign every team member to its tasks. Select task assignees explicitly.
+1. **در صف:** هنوز شروع نشده است.
+2. **در حال انجام:** در جریان است.
+3. **در بررسی:** خروجی برای بازبینی آماده است.
+4. **متوقف‌شده:** مانعی جلوی ادامه را گرفته است.
+5. **تکمیل‌شده:** کار پایان یافته است.
 
-## 5. Task templates
+در جزئیات هر کار می‌توانید گفتگو ثبت کنید، چک‌لیست بسازید، پیوست بارگذاری کنید، زمان‌سنج را شروع/متوقف کنید، پیش‌نیاز تعیین کنید یا کار را برای تأیید بفرستید. تکمیل کار تا پایان پیش‌نیازهای باز مسدود می‌شود. فایل پیوست کار حداکثر ۱۰ مگابایت است.
 
-Open **قالب‌های کار**. Owners and admins can create a template with a template name, default task title and description, priority, estimate, project/team, default assignees and checklist items. Any member can use an existing template to create a new task. The task and its checklist are copied; later edits to the task do not change the template.
+## ۶. زمان‌سنج و گزارش
 
-## 6. Recurring tasks
+هر کاربر هم‌زمان فقط یک زمان‌سنج فعال دارد. زمان ثبت‌شده به کار و کاربر متصل است. از گزارش روزانه یا هفتگی برای دیدن کارهای ایجادشده/تکمیل‌شده، کارهای عقب‌افتاده و زمان ثبت‌شده به تفکیک عضو و پروژه استفاده کنید.
 
-Open **کارهای تکرارشونده**. Owners and admins can create rules with:
+بازه‌های گزارش و برنامه‌های تکرار بر مبنای UTC محاسبه می‌شوند؛ منطقه زمانی فضای کاری در این MVP قابل تنظیم نیست.
 
-- Daily, weekly or monthly cadence.
-- An interval (for example every 2 weeks).
-- First execution date.
-- Optional due-date offset.
-- Default project and assignees.
+## ۷. قالب‌ها، تکرار، وابستگی و تأیید
 
-The server checks active rules when someone opens the workspace. Due instances are created as new tasks. Up to 24 missed occurrences per rule are generated in one pass; any remaining missed instances are caught up on later workspace loads. The server must be running and someone must access the workspace. There is no independent background scheduler in this MVP. Pausing a rule stops new task generation without deleting already-created tasks.
+- **قالب کار:** عنوان، توضیحات، اولویت، زمان تخمینی، مسئولان، تیم/پروژه و چک‌لیست پیش‌فرض را برای استفاده مجدد ذخیره کنید.
+- **کار تکرارشونده:** قانون روزانه، هفتگی یا ماهانه تعریف کنید. برنامه‌ریز داخلی تا زمانی که سرور روشن است موعدها را بررسی و کارهای سررسیدشده را تولید می‌کند.
+- **وابستگی:** تعیین کنید یک کار به پایان کار دیگری وابسته باشد. چرخه وابستگی پذیرفته نمی‌شود و کار تا پایان پیش‌نیاز تکمیل نمی‌شود.
+- **درخواست تأیید:** عضو می‌تواند خروجی را برای بررسی ارسال کند؛ مالک/مدیر مجاز می‌تواند تأیید یا برای اصلاح بازگرداند.
+- **وضعیت سفارشی:** مالک/مدیر مجاز می‌تواند نام و رنگ وضعیت‌های پایه را برای فضای کاری تنظیم کند؛ تعداد وضعیت‌های پایه همچنان پنج مورد است.
 
-## 7. Reports
+## ۸. برد ایده‌های مشترک
 
-Open **گزارش‌های عملکرد** and choose daily or weekly. Reports show tasks created, tasks completed, currently overdue/open task counts and time tracked. Work time is grouped by member and project. The weekly range is Saturday through Friday. Date boundaries are calculated in UTC, not a configurable local timezone.
+برای موضوع‌های مختلف برد بسازید. روی برد می‌توان کارت یادداشت چسبان، متن، پیوند و پیوند به یک کار را قرار داد. با گرفتن سربرگ کارت، آن را روی بوم جابه‌جا کنید؛ موقعیت روی سرور ثبت می‌شود. رویدادهای ساخت، ویرایش، جابه‌جایی و حذف به اعضای دیگر از مسیر WebSocket ارسال می‌شوند.
 
-## 8. Status labels
+اگر دو نفر محتوای یک کارت را تقریباً هم‌زمان ویرایش کنند، سیستم ادغام واژه‌به‌واژه ندارد؛ آخرین ذخیره جای نسخه قبلی را می‌گیرد. برای ایده‌های جداگانه، کارت‌های مجزا بسازید.
 
-Owners and admins can change the displayed label and color for the five built-in statuses in **تنظیمات → نام‌گذاری وضعیت‌ها**. The underlying status keys and number of workflow states remain fixed in this version so task records and Kanban logic remain stable.
+## ۹. فایل‌ها، پوشه‌ها و اشتراک‌گذاری
 
-## 9. Teams, invitations and permissions
+در فضای فایل‌ها می‌توانید پوشه، زیرپوشه، یادداشت متنی یا فایل بسازید. فایل‌ها تا سقف ۵۰ مگابایت با نوار پیشرفت مرورگر بارگذاری می‌شوند. انواع مجاز شامل PDF، تصویرهای معمول، TXT/MD/CSV، فایل‌های Office، ZIP، JSON و SVG است.
 
-- **Owner:** full workspace administration.
-- **Admin:** can administer teams, invitations, recurring rules, templates, status labels and approvals.
-- **Member:** can work with tasks, comments, checklists, attachments, time tracking, dependencies, template-based task creation and approval requests.
+هر مورد می‌تواند یکی از سطح‌های دسترسی زیر را داشته باشد:
 
-Team membership is configured from the **تیم‌ها و اعضا** section. The member list is shared across the workspace.
+| سطح | دسترسی |
+|---|---|
+| فضای کاری | اعضای واردشده همان فضای کاری |
+| تیم | اعضای تیم انتخاب‌شده؛ عضویت در تیم در سرور بررسی می‌شود |
+| گذرواژه | اعضای همان فضای کاری که گذرواژه را نیز می‌دانند |
 
-## 10. Notifications and synchronization
+مالک می‌تواند برای هر پوشه یا فایل، در تنظیمات ACL نقش‌ها، مجوز مشاهده و نوشتن را برای مالک، مدیر یا عضو جداگانه مشخص کند. ACL و محدودیت پوشه والد به زیرمجموعه‌ها نیز اعمال می‌شوند. در حالت گذرواژه‌ای، گذرواژه را جدا از لینک برای افراد مجاز ارسال کنید. لینک کپی‌شده لینک عمومی اینترنت نیست؛ حساب BottleNeck و دسترسی مناسب لازم است.
 
-Notifications are shown behind the bell icon. The app polls the workspace event feed every 3.5 seconds and refreshes the workspace snapshot when another team member changes data. This is near-real-time polling, not WebSocket push. Email and browser push notifications are not included.
+فایل‌ها خارج از مسیر استاتیک وب و در `data/shared/<workspace-id>/` نگهداری می‌شوند. نام فیزیکی فایل با شناسه تولید می‌شود و دریافت آن از مسیر احراز هویت‌شده سرور انجام می‌شود. BottleNeck در این نسخه فایل‌ها را اسکن ضدبدافزار نمی‌کند.
 
-## 11. LAN access
+## ۱۰. یادداشت‌های Markdown
 
-The server binds to `0.0.0.0:1939`. The host uses `http://127.0.0.1:1939`; other LAN devices use the host's IPv4 address. The launcher and Settings page display detected addresses. If necessary, set Windows network profile to Private and allow inbound TCP 1939 for the local subnet with the included firewall helper. Do not add router port forwarding or expose the development server to the public internet.
+یادداشت‌ها به‌شکل متن Markdown در پایگاه داده ذخیره می‌شوند و بخش نوشتن/پیش‌نمایش دارند. پیش‌نمایش GFM از تیتر، متن برجسته/مورب، فهرست، چک‌لیست، جدول، پیوند، نقل‌قول و بلوک کد پشتیبانی می‌کند. خروجی HTML پیش از نمایش با DOMPurify پاک‌سازی می‌شود.
 
-## 12. Upgrade and backup
+کتابخانه‌های marked و DOMPurify از CDN بارگیری می‌شوند. در شبکه بدون اینترنت، متن منبع در دسترس می‌ماند اما پیش‌نمایش غنی ممکن است به متن ساده برگردد. تاریخچه نسخه و ادغام هم‌زمان چند نویسنده وجود ندارد.
 
-Before upgrading, stop BottleNeck and copy the entire `data/` folder. The v0.4 startup creates the new productivity tables and initializes status labels for existing workspaces. Existing task/user/project/collaboration records are preserved. Keep both `bottleneck.sqlite3` and `uploads/` together.
+## ۱۱. گفت‌وگوی تیمی و فعالیت
 
-## 13. Creator credit
+کانال عمومی فضای کاری برای اعضای آن فضاست. کانال تیمی فقط برای اعضای همان تیم قابل مشاهده و استفاده است. پیام‌ها، تغییرات کار و رویدادهای برد/فایل/پوشه در گزارش فعالیت ثبت می‌شوند. حضور اعضا تقریباً هر ۱۲ ثانیه تازه می‌شود. رویدادهای کاری روی اتصال WebSocket احراز هویت‌شده ارسال می‌شوند؛ در صورت قطع اتصال، مرورگر دوباره تلاش می‌کند وصل شود.
 
-The app includes a small creator popup with the signature «ساخته شده با عشق توسط ژلوفن», Telegram `https://t.me/jelofen1962` and phone link `tel:+989109721962`.
+## ۱۲. امنیت حساب و تأیید دومرحله‌ای
 
-## 14. Version history
+در تنظیمات امنیت حساب، TOTP را فعال کنید:
 
-### v0.4.0
+1. راه‌اندازی را انتخاب کنید.
+2. کلید یا URI نمایش‌داده‌شده را در برنامه‌ای مانند Google Authenticator، 1Password یا برنامه TOTP سازگار وارد کنید.
+3. ده کد بازیابی را قبل از بستن پنجره در محل امن و جداگانه ذخیره کنید.
+4. کد شش‌رقمی جاری را وارد کنید تا TOTP فعال شود.
 
-Time tracking, daily/weekly reports, recurring rules, task templates, dependencies, approval workflow, editable status labels and 120% desktop UI scale.
+در دفعات بعدی ورود، پس از ایمیل و گذرواژه کد TOTP یا یکی از کدهای بازیابی را وارد کنید. هر کد بازیابی یک‌بار قابل استفاده است و پس از مصرف از موجودی کم می‌شود. درخواست ورود دومرحله‌ای پنج دقیقه اعتبار و حداکثر پنج تلاش ناموفق دارد.
 
-### v0.3.0
+کلید TOTP در پایگاه داده محلی سرور نگهداری می‌شود؛ دسترسی فایل به پوشه `data/` را محدود کنید. اگر دستگاه احراز هویت را از دست دادید از کد بازیابی استفاده کنید. اگر همه کدها و دستگاه را از دست دادید، مسیر خودکار بازنشانی TOTP در این نسخه وجود ندارد و بازیابی دستی از طریق مدیر سرور لازم است.
 
-Multi-assignee tasks, checklists, private attachments, notifications, team membership editor, LAN port 1939, guided tour and creator popup.
+## ۱۳. بازیابی گذرواژه و اعلان ایمیلی
 
-### v0.2.1
+برای ارسال لینک بازیابی و اعلان‌ها، مدیر نصب باید SMTP را در متغیرهای محیطی سرور تنظیم کند. سپس هر کاربر از تنظیمات اعلان، دریافت ایمیل و دسته‌های واگذاری کار، اشاره/گفتگو و موعد را فعال می‌کند.
 
-Windows dependency resolution fix using Python 3.12 and lean Uvicorn installation.
+لینک بازیابی عمومی ۳۰ دقیقه اعتبار و فقط یک‌بار قابلیت استفاده دارد. پاسخ عمومی فرم برای ایمیل موجود و ناموجود یکسان است. اگر SMTP تنظیم نشده باشد، فرم عمومی قادر به ارسال لینک نیست. در این حالت مدیر فضای کاری می‌تواند برای عضو لینک بازیابی بسازد و آن را از مسیر امن به او بدهد. پس از تغییر گذرواژه، نشست‌های قبلی آن حساب باطل می‌شوند.
 
-### v0.2.0
+متغیرهای SMTP:
 
-Server-side account foundation, SQLite workspace, task/project management and activity logging.
+- `BOTTLENECK_SMTP_HOST`
+- `BOTTLENECK_SMTP_PORT` (پیش‌فرض ۵۸۷)
+- `BOTTLENECK_SMTP_FROM`
+- `BOTTLENECK_SMTP_STARTTLS` (پیش‌فرض ۱)
+- `BOTTLENECK_SMTP_USER` و `BOTTLENECK_SMTP_PASSWORD` (در صورت نیاز)
 
-## 15. Current limitations
+## ۱۴. پشتیبان‌گیری و بازیابی داده
 
-No password reset, two-factor authentication, email delivery, multiple workspaces per account, WebSocket push, external scheduler, configurable workflow-state count, time zone setting, report exports or file virus scanning. Use BottleNeck only on a trusted LAN and back up `data/` regularly.
+پشتیبان خودکار به‌طور پیش‌فرض هر ۲۴ ساعت ساخته می‌شود و ۱۴ نسخه آخر نگهداری می‌شود. تنظیم‌ها:
+
+- `BOTTLENECK_BACKUP_INTERVAL_HOURS`
+- `BOTTLENECK_BACKUP_RETENTION`
+- `BOTTLENECK_BACKUP_DIR`
+
+پشتیبان خودکار پس از ایجاد نخستین حساب شروع می‌شود. مالک اولیه نصب می‌تواند از تنظیمات نسخه دستی نیز بسازد. هر فایل ZIP شامل `manifest.json`، پایگاه داده `data/bottleneck.sqlite3`، پیوست‌های `data/uploads/` و فایل‌های مشترک `data/shared/` است.
+
+برای بازیابی:
+
+1. BottleNeck را متوقف کنید.
+2. از `data/` و `backups/` فعلی در مسیر جداگانه کپی بگیرید.
+3. ZIP پشتیبان را در ریشه پوشه نصب استخراج کنید تا مسیرهای `data/` جایگزین شوند.
+4. مطمئن شوید دیتابیس و پوشه‌های `uploads` و `shared` بازیابی شده‌اند.
+5. برنامه را اجرا و ورود، کارها و فایل‌های مشترک را بررسی کنید.
+
+پشتیبان‌ها پیش‌فرض روی همان رایانه میزبان می‌مانند و به فضای ابری یا دستگاه دیگر منتقل نمی‌شوند. برای بازیابی فاجعه، یک نسخه جداگانه خارج از میزبان نگهداری کنید. فایل پشتیبان شامل اطلاعات کل نصب و فایل‌های خصوصی است؛ آن را محرمانه نگه دارید.
+
+## ۱۵. شبکه محلی و HTTPS
+
+لانچر روی `0.0.0.0:1939` گوش می‌دهد.
+
+- میزبان: `http://127.0.0.1:1939`
+- دستگاه‌های LAN: `http://<IP میزبان>:1939`
+- مستندات API: `/api/docs`
+
+در ویندوز، شبکه باید Private باشد. اگر اتصال از دستگاه‌های دیگر برقرار نشد، `allow-lan-firewall.ps1` را از PowerShell ادمین اجرا کنید. برای HTTPS می‌توانید متغیرهای `BOTTLENECK_SSL_CERTFILE` و `BOTTLENECK_SSL_KEYFILE` را قبل از اجرا تنظیم کنید؛ لانچر کوکی Secure را فعال می‌کند. برای شبکه عمومی، HTTPS معتبر و reverse proxy سخت‌سازی‌شده لازم است. پورت ۱۹۳۹ را مستقیم به اینترنت فوروارد نکنید.
+
+## ۱۶. مسیرهای داده و فایل‌ها
+
+```text
+bottleneck-mvp/
+├── main.py
+├── index.html
+├── schema.sql
+├── static/
+│   ├── app.js
+│   └── styles.css
+├── data/
+│   ├── bottleneck.sqlite3
+│   ├── uploads/
+│   └── shared/
+└── backups/
+```
+
+`data/` و `backups/` داده عملیاتی‌اند و نباید حذف شوند. برای مهاجرت به نسخه بعدی، برنامه را متوقف کنید، از کل `data/` نسخه پشتیبان بگیرید، ZIP جدید را استخراج کنید و پوشه داده قبلی را به نصب تازه کپی کنید. فایل `schema.sql` را دستی روی دیتابیس فعال اجرا نکنید؛ برنامه هنگام راه‌اندازی جدول‌ها و مهاجرت را اعمال می‌کند.
+
+## ۱۷. تغییرات نسخه‌ها
+
+### v0.6.0 · مدیریت، امنیت و پایداری MVP
+
+- چند فضای کاری برای هر حساب و انتخاب/تعویض فضای فعال.
+- ماتریس مجوز نقش‌های مدیر و عضو؛ مالک در فضای خودش دسترسی کامل دارد.
+- ACL خواندن/نوشتن برای پوشه‌ها و فایل‌های مشترک با ارث‌بری از والد.
+- ورود دومرحله‌ای TOTP با ۱۰ کد بازیابی یک‌بارمصرف و سقف ۵ تلاش ناموفق.
+- لینک تغییر گذرواژه ۳۰ دقیقه‌ای با مصرف یک‌باره، SMTP اختیاری و لینک دستی مدیر.
+- اعلان ایمیلی اختیاری با تنظیمات هر کاربر و صف ارسال.
+- رویدادهای مشترک با WebSocket احراز هویت‌شده و کنترل اعتبار نشست.
+- پشتیبان ZIP خودکار و دستی با نگهداری نسخه‌ها، شامل دیتابیس و فایل‌ها.
+- دسترسی سراسری پشتیبان فقط برای مالک اولیه نصب.
+- راه‌اندازی HTTPS اختیاری و به‌روزرسانی تور، راهنما و changelog.
+
+### v0.5.0 · فضای مشترک و دانش تیمی
+
+برد ایده، فایل‌ها و پوشه‌های مشترک، یادداشت Markdown، دسترسی فضای کاری/تیمی/گذرواژه، بارگذاری با نوار پیشرفت، گفت‌وگوی تیمی و ثبت فعالیت.
+
+### v0.4.0 · بهره‌وری و گردش کار
+
+زمان‌سنج، گزارش روزانه/هفتگی، کارهای تکرارشونده، قالب کار، وابستگی، درخواست تأیید و وضعیت‌های قابل نام‌گذاری.
+
+### v0.3.0 · همکاری تیمی و LAN
+
+چند مسئول برای هر کار، چک‌لیست، پیوست، اعلان، مدیریت عضویت تیم، LAN روی پورت ۱۹۳۹ و پنجره امضای سازنده.
+
+### v0.2.x · پایه سرور
+
+ثبت‌نام و ورود سروری، نشست، پایگاه SQLite، فضاهای کاری، دعوت، پروژه، کار و تاریخچه فعالیت.
+
+## ۱۸. محدودیت‌های MVP و نکات ایمنی
+
+- این بسته برای MVP تیمی روی LAN/شبکه خصوصی آماده شده است؛ هنوز سخت‌سازی کامل برای انتشار عمومی اینترنتی یا ارزیابی نفوذ مستقل انجام نشده است.
+- ورود با گذرواژه و درخواست عمومی بازیابی در این نسخه محدودکننده سراسری نرخ درخواست بر اساس IP ندارند. سرور را روی اینترنت عمومی قرار ندهید.
+- ایمیل به SMTP معتبر و تنظیمات درست وابسته است؛ تأیید ایمیل، مدیریت برگشت ایمیل و صفحه تنظیمات SMTP وجود ندارد.
+- کلید TOTP در دیتابیس نصب نگهداری می‌شود؛ از پوشه `data/` و حساب سیستم‌عامل میزبان محافظت کنید.
+- فایل‌ها اسکن ضدبدافزار نمی‌شوند.
+- پیش‌نمایش غنی Markdown، فونت‌های وب و برخی آیکون‌ها به CDNهای بیرونی وابسته‌اند.
+- ویرایش هم‌زمان یک یادداشت ادغام کاراکتری و تاریخچه نسخه ندارد؛ آخرین ذخیره برنده است.
+- زمان‌سنج/گزارش و برنامه تکرار از UTC استفاده می‌کنند.
+- نسخه پشتیبان در همان میزبان ذخیره می‌شود مگر آن را جداگانه منتقل کنید.
+
+## امضای سازنده
+
+در برنامه پنجره‌ای کوچک با متن **«ساخته شده با عشق توسط ژلوفن»**، پیوند تلگرام `https://t.me/jelofen1962` و شماره قابل تماس `+989109721962` قرار دارد. نام ژلوفن با رنگ بنفش نمایش داده می‌شود.

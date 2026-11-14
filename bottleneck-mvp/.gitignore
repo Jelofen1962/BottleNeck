@@ -8,3 +8,7 @@ data/*.sqlite3
 data/*.sqlite3-shm
 data/*.sqlite3-wal
 data/uploads/
+data/shared/
+
+# Runtime backups contain the full workspace database and private files.
+backups/
