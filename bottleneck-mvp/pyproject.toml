@@ -1,0 +1,15 @@
+[project]
+name = "bottleneck-workspace"
+version = "0.2.1"
+description = "BottleNeck team work tracker MVP"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  # Keep Uvicorn's base install only. The [standard] extra pulls in
+  # optional native/build dependencies (including PyYAML) that this MVP
+  # does not use and that can fail to build on Windows.
+  "uvicorn>=0.30,<1.0",
+]
+
+[tool.uv]
+package = false
