@@ -1,52 +1,59 @@
 # BottleNeck changelog
 
-## v0.6.0 — MVP administration, account security and reliability
+## v0.9.0 · مدیریت سرور و جابه‌جایی داده
 
-- Added multiple workspaces per account, workspace creation and in-app workspace switching.
-- Added a workspace-scoped permission matrix for admin/member roles; owners retain full access within their workspace.
-- Added per-role read/write ACLs for shared drive folders and files, inherited through parent folders.
-- Added TOTP two-factor authentication and ten hashed, single-use recovery codes shown only during setup.
-- Added five-attempt limits per TOTP login challenge and five-minute challenge expiry.
-- Added one-time password reset links with a 30-minute expiry, SMTP password-reset email delivery and an admin-generated manual reset link.
-- Added optional SMTP notification delivery with per-user email/category preferences and a retry queue.
-- Added authenticated WebSocket events for workspace collaboration, with session revocation checks during an open connection.
-- Added automatic ZIP backups (24-hour default interval, 14-copy default retention) and manual backup create/list/download.
-- Restricted global backup archives to the initial installation owner because each archive contains the whole instance database and file stores.
-- Added backup manifest and restore guidance; archives include SQLite, task uploads and shared-drive files.
-- Added optional Uvicorn HTTPS startup through certificate/key environment variables and secure session cookies.
-- Avoids creating empty automatic backups before the first account exists.
-- Preserved Persian RTL UI, Vazirmatn/Roboto typography, approximately 120% desktop scale, responsive mobile scale, LAN port 1939 and creator credit.
-- Updated the in-app handbook, external README and installation scripts.
+- افزودن CLI مستقل برای راه‌اندازی اولیه مدیر نصب، اجرای سرور، وضعیت، عیب‌یابی، لاگ، پشتیبان‌گیری، بازیابی، تنظیمات، کاربران، فضاها و مدیران سرور.
+- افزودن پنل مستقل «مدیریت سرور» خارج از تنظیمات فضای کاری.
+- افزودن نقش‌های سرور owner، operator و auditor با کنترل مجوز در سمت سرور.
+- نمایش سلامت SQLite، بررسی foreign key، زمان روشن‌بودن، تعداد کاربران/فضاها/نشست‌ها، فضای مصرفی و آزاد و حجم لاگ.
+- افزودن تنظیم میزبان/پورت و زمان‌بندی/نگهداری پشتیبان؛ تغییر میزبان/پورت پس از راه‌اندازی مجدد اعمال می‌شود.
+- افزودن مدیریت مدیران سرور، خروجی کامل فضای کاری ZIP، خروجی CSV کارها/پروژه‌ها و ورود این داده‌ها از GUI.
+- افزودن import/export کامل فضای کاری از CLI؛ بسته شامل داده‌ها و فایل‌های وابسته است و عمداً گذرواژه‌ها و نشست‌ها را صادر نمی‌کند.
+- افزودن بازیابی آفلاین با تأیید دوگانه، بررسی مسیرهای ZIP، checksum، سلامت SQLite و پشتیبان پیش از بازیابی.
+- افزودن مهاجرت خودکار از v0.8.x؛ سازنده قدیمی‌ترین فضای کاری به مدیر نصب اولیه تبدیل می‌شود.
+- به‌روزرسانی cache-busting فایل‌های CSS/JS و مستندات نصب، CLI، GUI و بازیابی.
 
-## v0.5.0 — Shared space, knowledge and collaboration
+## v0.8.0 · Communication and knowledge editing
 
-- Added workspace concept boards with movable sticky-note, text, link and task cards.
-- Added shared drive folders, files and Markdown text nodes.
-- Added workspace-wide, team-only and password-protected share modes.
-- Added upload progress, streamed server writes and a 50 MB shared-file limit.
-- Added authenticated downloads and folder permission inheritance.
-- Added Markdown source editor with GFM preview and HTML sanitization.
-- Added workspace and team chat channels, presence and shared activity events.
+- Rebuilt shared Markdown notes into a split editor with a continuously updating, sanitized GFM preview, formatting toolbar, keyboard shortcuts, word count and autosave for existing notes. Saves are queued safely so edits made while a request is in flight are not silently discarded.
+- Added chat message search across the current workspace/team channel, searching message text and sender names.
+- Added @mention suggestions with team-aware filtering, server-validated recipients, in-app mention notifications and mention preservation when editing messages.
+- Added chat replies with quoted context, message editing/deletion, and permission-aware moderation.
+- Added chat media/file uploads with XHR progress reporting, a 25 MB per-file limit, an extension allowlist and permission-checked downloads.
+- Added image previews, inline audio/video playback, and ordinary file download cards.
+- Added voice-message recording through the browser MediaRecorder API, with a two-minute cap, upload progress and playback after sending. Microphone access on LAN devices requires HTTPS; localhost works as a secure browser context.
+- Added resource cards linking to tasks, projects, concept boards, shared Markdown notes and shared files. Resource search only returns items visible to the current user.
+- Added attachment staging cleanup after 24 hours, server-derived MIME types for safer inline media handling, chat attachment inclusion in backup archives, and channel-aware permission checks.
+- Preserved the existing v0.7.0 identity/presence/role features, Persian RTL/Jalali UI, approximately 120% desktop scale, LAN port 1939 and Jelofen creator signature.
 
-## v0.4.0 — Productivity and workflow
+## v0.7.0 · Identity, roles and live team presence
 
-- Added time entries and one-active-timer-per-user enforcement.
-- Added daily/weekly reports with task and time summaries.
-- Added recurring rules, reusable task templates and checklists.
-- Added task dependencies, cycle validation and completion guards.
-- Added approval requests and owner/admin decisions.
-- Added workspace status labels/colors and 120% desktop scale.
 
-## v0.3.0 — Team collaboration and LAN
 
-- Added multiple task assignees, checklists, task attachments, in-app notifications and team membership management.
-- Added LAN access on port 1939, guided tour, in-app handbook, activity history and creator credit popup.
+- Added a Remember me option. Persistent sessions last 30 days; regular browser sessions use a session cookie and expire server-side after 12 hours. The chosen value is preserved across the TOTP challenge.
+- Added optional profile image upload during registration and profile image management in settings. JPEG, PNG, WebP and GIF are limited to 3 MB and served only to authenticated workspace members.
+- Added short workspace join codes: eight characters, 15-minute expiry, one use by default, configurable use limit, hashed storage and per-user attempt throttling. Existing accounts join without creating a duplicate account and keep their previous workspace memberships.
+- Added named, color-coded custom roles with an explicit permission allow-list, plus backend enforcement for each supported permission.
+- Expanded permission-aware UI controls and aligned the settings matrix with the API permission catalog.
+- Added team presence roster with names, avatars, roles, active pages and named color cursors. Cursor positions are approximate viewport percentages; presence expires after 45 seconds.
+- Improved chat into a channel/message/online-member layout and update the roster in place so presence refresh does not discard chat drafts or scroll position. Rich mentions, media, voice and resource links were added in v0.8.0.
+- Fixed a duplicate SMTP queue send.
+- Updated the in-app and external documentation and preserved the existing RTL Persian design, 120% desktop scale, LAN port 1939 and Jelofen creator signature.
 
-## v0.2.1 — Windows installation fix
+## v0.6.1 · Secure joining and Persian calendar
 
-- Pinned launch setup to Python 3.12.
-- Removed optional Uvicorn extras that pulled in unnecessary PyYAML compilation on Windows.
+- Added secure, shareable workspace join links for new and existing accounts.
+- Existing registered users can accept email invitations by signing in; the invitation flow no longer rejects an already-registered email.
+- Join tokens contain 48 bytes of cryptographically secure randomness; only SHA-256 hashes are stored. New links place the secret in the URL fragment and submit it in a POST body, avoiding token exposure in the initial request and URL path logs. Links support expiry, usage limits and revocation. HTTPS is still required to encrypt network traffic.
+- Task deadlines and recurring-task start dates can be entered using the Jalali calendar. The calendar view, date labels and timestamps explicitly use the Persian calendar. Database dates remain ISO Gregorian for reliable sorting and API compatibility.
+- Redesigned the creator signature as a black, professional popup with white contact links, violet Jelofen accent, five-second GitHub redirect and a stay/cancel option.
+- Bumped app and static asset version to 0.6.1.
 
-## v0.2.0 — Server foundation
+## v0.6.0 · MVP admin and reliability
 
-- Introduced FastAPI, SQLite, server-side authentication/session storage, workspaces, invitations, tasks, projects and activity history.
+- Multi-workspace account membership and switching.
+- Configurable role and shared-folder permissions.
+- TOTP two-factor authentication, recovery codes and password reset.
+- Authenticated WebSocket events.
+- Automatic and manual backups.
+

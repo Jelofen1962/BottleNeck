@@ -13,6 +13,9 @@ import hmac
 import ipaddress
 import json
 import calendar
+import csv
+import io
+import logging
 import mimetypes
 import os
 import re
@@ -41,15 +44,30 @@ COOKIE_NAME = "bottleneck_session"
 SESSION_DAYS = int(os.getenv("BOTTLENECK_SESSION_DAYS", "14"))
 COOKIE_SECURE = os.getenv("BOTTLENECK_COOKIE_SECURE", "0") == "1"
 PBKDF2_ITERATIONS = 310_000
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.9.0"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_AVATAR_BYTES = 3 * 1024 * 1024
+AVATAR_DIR = UPLOAD_DIR / "avatars"
 MAX_SHARED_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_CHAT_UPLOAD_BYTES = 25 * 1024 * 1024
+CHAT_DIR = DB_PATH.parent / "chat_uploads"
+CHAT_ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf", ".txt", ".md", ".csv", ".zip", ".mp3", ".wav", ".m4a", ".ogg", ".oga", ".webm", ".mp4", ".mov", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".json"}
 SHARED_FILE_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt", ".md", ".csv", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".json", ".svg"}
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt", ".csv", ".doc", ".docx", ".xls", ".xlsx", ".zip"}
 STATUSES = {"todo", "in-progress", "review", "blocked", "done"}
 PRIORITIES = {"low", "medium", "high", "urgent"}
 ROLES = {"owner", "admin", "member"}
 SCHEMA = (BASE_DIR / "schema.sql").read_text(encoding="utf-8")
+PROCESS_STARTED_AT = datetime.now(timezone.utc)
+SERVER_LOG_DIR = BASE_DIR / "logs"
+SERVER_LOG_DIR.mkdir(parents=True, exist_ok=True)
+SERVER_LOG_PATH = SERVER_LOG_DIR / "server.log"
+_server_logger = logging.getLogger("bottleneck.server")
+if not _server_logger.handlers:
+    _handler = logging.FileHandler(SERVER_LOG_PATH, encoding="utf-8")
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    _server_logger.addHandler(_handler)
+    _server_logger.setLevel(logging.INFO)
 
 
 @contextmanager
@@ -102,9 +120,92 @@ def init_db() -> None:
     with db() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
+        conn.execute("""CREATE TABLE IF NOT EXISTS workspace_join_links (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')),
+            token_hash TEXT NOT NULL UNIQUE,
+            created_by TEXT NOT NULL REFERENCES users(id),
+            expires_at TEXT NOT NULL,
+            max_uses INTEGER NOT NULL DEFAULT 0,
+            use_count INTEGER NOT NULL DEFAULT 0,
+            revoked_at TEXT,
+            created_at TEXT NOT NULL
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_workspace_join_links_active ON workspace_join_links(workspace_id, revoked_at, expires_at)")
         challenge_columns = {r["name"] for r in conn.execute("PRAGMA table_info(login_challenges)").fetchall()}
         if "attempts" not in challenge_columns:
             conn.execute("ALTER TABLE login_challenges ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        if "remember_me" not in challenge_columns:
+            conn.execute("ALTER TABLE login_challenges ADD COLUMN remember_me INTEGER NOT NULL DEFAULT 0")
+        user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "avatar_key" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN avatar_key TEXT")
+        if "avatar_updated_at" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN avatar_updated_at TEXT")
+        membership_columns = {r["name"] for r in conn.execute("PRAGMA table_info(memberships)").fetchall()}
+        if "custom_role_id" not in membership_columns:
+            conn.execute("ALTER TABLE memberships ADD COLUMN custom_role_id TEXT")
+        presence_columns = {r["name"] for r in conn.execute("PRAGMA table_info(workspace_presence)").fetchall()}
+        for column, declaration in {
+            "active_team_id": "TEXT", "cursor_x_pct": "REAL", "cursor_y_pct": "REAL",
+            "cursor_page": "TEXT", "cursor_color": "TEXT"
+        }.items():
+            if column not in presence_columns:
+                conn.execute(f"ALTER TABLE workspace_presence ADD COLUMN {column} {declaration}")
+        chat_columns = {r["name"] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()}
+        for column, declaration in {
+            "reply_to_id": "TEXT", "edited_at": "TEXT", "deleted_at": "TEXT",
+            "resource_type": "TEXT", "resource_id": "TEXT"
+        }.items():
+            if column not in chat_columns:
+                conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {column} {declaration}")
+        conn.executescript("""
+          CREATE TABLE IF NOT EXISTS chat_attachments (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            uploaded_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            channel_type TEXT NOT NULL CHECK(channel_type IN ('workspace','team')),
+            team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+            message_id TEXT REFERENCES chat_messages(id) ON DELETE CASCADE,
+            original_name TEXT NOT NULL, stored_name TEXT NOT NULL, content_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL, created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON chat_attachments(message_id);
+          CREATE INDEX IF NOT EXISTS idx_chat_attachments_staging ON chat_attachments(uploaded_by,message_id,created_at);
+          CREATE TABLE IF NOT EXISTS chat_message_mentions (
+            message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            PRIMARY KEY(message_id,user_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_chat_mentions_user ON chat_message_mentions(user_id,message_id);
+        """)
+        conn.executescript("""
+          CREATE TABLE IF NOT EXISTS workspace_custom_roles (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#8b6bb1', base_role TEXT NOT NULL DEFAULT 'member' CHECK(base_role IN ('admin','member')),
+            created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL,
+            UNIQUE(workspace_id,name)
+          );
+          CREATE TABLE IF NOT EXISTS workspace_custom_role_permissions (
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            role_id TEXT NOT NULL REFERENCES workspace_custom_roles(id) ON DELETE CASCADE,
+            permission_key TEXT NOT NULL, allowed INTEGER NOT NULL DEFAULT 0,
+            updated_by TEXT REFERENCES users(id) ON DELETE SET NULL, updated_at TEXT NOT NULL,
+            PRIMARY KEY(role_id,permission_key)
+          );
+          CREATE TABLE IF NOT EXISTS workspace_join_codes (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')),
+            token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL REFERENCES users(id),
+            expires_at TEXT NOT NULL, max_uses INTEGER NOT NULL DEFAULT 1, use_count INTEGER NOT NULL DEFAULT 0,
+            revoked_at TEXT, created_at TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS join_code_attempts (
+            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            window_started TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
+          );
+          CREATE INDEX IF NOT EXISTS idx_join_codes_active ON workspace_join_codes(workspace_id,revoked_at,expires_at);
+        """)
         # v0.2.x compatibility: backfill the old single-assignee column.
         conn.execute("""INSERT OR IGNORE INTO task_assignees(task_id,user_id,assigned_by,created_at)
                         SELECT id,assignee_id,created_by,created_at FROM tasks WHERE assignee_id IS NOT NULL""")
@@ -116,8 +217,49 @@ def init_db() -> None:
                 conn.execute("""INSERT OR IGNORE INTO workspace_status_labels
                     (workspace_id,status_key,label,color,position,updated_at) VALUES(?,?,?,?,?,?)""",
                     (workspace["id"], key, label, color, position, now_iso()))
+        conn.executescript("""
+          CREATE TABLE IF NOT EXISTS server_instance (
+            id INTEGER PRIMARY KEY CHECK(id=1), install_id TEXT NOT NULL,
+            owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+            initialized_at TEXT NOT NULL, version TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS server_admins (
+            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            role TEXT NOT NULL CHECK(role IN ('owner','operator','auditor')),
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS server_settings (
+            setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL,
+            updated_by TEXT REFERENCES users(id) ON DELETE SET NULL, updated_at TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS server_audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+            action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '',
+            details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_server_audit_created ON server_audit_logs(created_at DESC);
+        """)
+        instance = conn.execute("SELECT id FROM server_instance WHERE id=1").fetchone()
+        if not instance:
+            first = conn.execute("SELECT id,created_by FROM workspaces ORDER BY rowid LIMIT 1").fetchone()
+            owner_id = first["created_by"] if first else None
+            conn.execute("INSERT INTO server_instance(id,install_id,owner_user_id,initialized_at,version) VALUES(1,?,?,?,?)",
+                         (str(uuid.uuid4()), owner_id, now_iso(), APP_VERSION))
+        # Backward-compatible elevation: the creator of the first workspace was
+        # the instance administrator in earlier MVP releases.
+        first_workspace = conn.execute("SELECT created_by FROM workspaces ORDER BY rowid LIMIT 1").fetchone()
+        if first_workspace and first_workspace["created_by"]:
+            conn.execute("INSERT OR IGNORE INTO server_admins(user_id,role,enabled,created_by,created_at) VALUES(?,'owner',1,?,?)",
+                         (first_workspace["created_by"], first_workspace["created_by"], now_iso()))
+            conn.execute("UPDATE server_instance SET owner_user_id=COALESCE(owner_user_id,?) WHERE id=1", (first_workspace["created_by"],))
+        conn.execute("UPDATE server_instance SET version=? WHERE id=1", (APP_VERSION,))
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     SHARED_DIR.mkdir(parents=True, exist_ok=True)
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    CHAT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def log_activity(conn: sqlite3.Connection, workspace_id: str, user_id: str | None,
@@ -156,11 +298,13 @@ class RegisterInput(BaseModel):
     password: str = Field(min_length=8, max_length=200)
     workspace_name: str | None = Field(default=None, max_length=100)
     invite_code: str | None = None
+    join_token: str | None = None
 
 
 class LoginInput(BaseModel):
     email: str
     password: str
+    remember_me: bool = False
 
 
 class TaskInput(BaseModel):
@@ -305,13 +449,56 @@ class DriveNodeUpdateInput(BaseModel):
 
 
 class ChatMessageInput(BaseModel):
-    body: str = Field(min_length=1, max_length=5000)
+    body: str = Field(default="", max_length=10000)
     channel_type: str = "workspace"
     team_id: str | None = None
+    attachment_id: str | None = None
+    reply_to_id: str | None = None
+    resource_type: str | None = None
+    resource_id: str | None = None
+    mentions: list[str] = Field(default_factory=list, max_length=50)
+
+
+class ChatMessageEditInput(BaseModel):
+    body: str = Field(min_length=1, max_length=10000)
+    mentions: list[str] = Field(default_factory=list, max_length=50)
 
 
 class PresenceInput(BaseModel):
     page: str = Field(default="overview", max_length=50)
+    team_id: str | None = None
+
+
+class CursorInput(BaseModel):
+    page: str = Field(default="overview", max_length=50)
+    team_id: str | None = None
+    x_pct: float = Field(ge=0, le=100)
+    y_pct: float = Field(ge=0, le=100)
+
+
+class JoinCodeCreateInput(BaseModel):
+    role: str = "member"
+    max_uses: int = Field(default=1, ge=1, le=100)
+
+
+class JoinCodeAcceptInput(BaseModel):
+    code: str = Field(min_length=6, max_length=16)
+
+
+class CustomRoleCreateInput(BaseModel):
+    name: str = Field(min_length=2, max_length=40)
+    color: str = Field(default="#8b6bb1", pattern=r"^#[0-9a-fA-F]{6}$")
+    base_role: str = "member"
+    permissions: list[str] = Field(default_factory=list, max_length=80)
+
+
+class CustomRolePermissionsInput(BaseModel):
+    permissions: list[str] = Field(default_factory=list, max_length=80)
+
+
+class MemberRoleInput(BaseModel):
+    role: str = "member"
+    custom_role_id: str | None = None
 
 
 class WorkspaceCreateInput(BaseModel):
@@ -320,6 +507,16 @@ class WorkspaceCreateInput(BaseModel):
 
 class WorkspaceSwitchInput(BaseModel):
     workspace_id: str
+
+
+class WorkspaceJoinLinkInput(BaseModel):
+    role: str = "member"
+    expires_days: int = Field(default=7, ge=1, le=90)
+    max_uses: int = Field(default=0, ge=0, le=500)
+
+
+class LinkTokenInput(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
 
 
 class TotpVerifyInput(BaseModel):
@@ -400,26 +597,37 @@ async def shutdown() -> None:
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+    started = time.monotonic()
+    try:
+        response = await call_next(request)
+    except Exception:
+        _server_logger.exception("http_error method=%s path=%s", request.method, request.url.path)
+        raise
+    if request.url.path.startswith("/api/") and response.status_code >= 400:
+        _server_logger.warning("http_response status=%s method=%s path=%s duration_ms=%s", response.status_code, request.method,
+                               request.url.path, int((time.monotonic()-started)*1000))
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
-def create_session(response: Response, user_id: str, workspace_id: str) -> None:
+def create_session(response: Response, user_id: str, workspace_id: str, remember_me: bool = False) -> None:
     token = secrets.token_urlsafe(40)
-    expires = datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)
+    lifetime = timedelta(days=30) if remember_me else timedelta(hours=12)
+    expires = datetime.now(timezone.utc) + lifetime
     with db() as conn:
         conn.execute(
             "INSERT INTO sessions(id,user_id,workspace_id,token_hash,expires_at,created_at) VALUES(?,?,?,?,?,?)",
             (new_id(), user_id, workspace_id, hash_token(token), expires.isoformat(), now_iso()),
         )
-    response.set_cookie(COOKIE_NAME, token, max_age=SESSION_DAYS * 86400, httponly=True,
-                        secure=COOKIE_SECURE, samesite="lax", path="/")
+    cookie_options = {"httponly": True, "secure": COOKIE_SECURE, "samesite": "lax", "path": "/"}
+    if remember_me:
+        cookie_options["max_age"] = 30 * 86400
+    response.set_cookie(COOKIE_NAME, token, **cookie_options)
 
 
 def get_context(request: Request) -> dict[str, Any]:
@@ -429,10 +637,13 @@ def get_context(request: Request) -> dict[str, Any]:
     with db() as conn:
         row = conn.execute(
             """SELECT s.id AS session_id,s.user_id,s.workspace_id,s.expires_at,
-                      u.name,u.email,u.onboarding_completed,w.name AS workspace_name,m.role
+                      u.name,u.email,u.onboarding_completed,u.avatar_key,u.avatar_updated_at,
+                      w.name AS workspace_name,m.role,m.custom_role_id,
+                      cr.name AS custom_role_name,cr.color AS custom_role_color
                FROM sessions s JOIN users u ON u.id=s.user_id
                JOIN workspaces w ON w.id=s.workspace_id
                JOIN memberships m ON m.user_id=s.user_id AND m.workspace_id=s.workspace_id
+               LEFT JOIN workspace_custom_roles cr ON cr.id=m.custom_role_id
                WHERE s.token_hash=?""", (hash_token(token),)
         ).fetchone()
         if not row:
@@ -455,11 +666,47 @@ def has_permission(user: dict[str, Any], permission: str) -> bool:
     if user.get("role") == "owner":
         return True
     with db() as conn:
+        if user.get("custom_role_id"):
+            row = conn.execute("SELECT allowed FROM workspace_custom_role_permissions WHERE workspace_id=? AND role_id=? AND permission_key=?",
+                               (user["workspace_id"], user["custom_role_id"], permission)).fetchone()
+            if row is not None:
+                return bool(row["allowed"])
+            base = conn.execute("SELECT base_role FROM workspace_custom_roles WHERE id=? AND workspace_id=?",
+                                (user["custom_role_id"], user["workspace_id"])).fetchone()
+            fallback_role = base["base_role"] if base else "member"
+        else:
+            fallback_role = user.get("role", "member")
         row = conn.execute("SELECT allowed FROM workspace_role_permissions WHERE workspace_id=? AND role=? AND permission_key=?",
-                           (user["workspace_id"], user["role"], permission)).fetchone()
+                           (user["workspace_id"], fallback_role, permission)).fetchone()
     if row is not None:
         return bool(row["allowed"])
-    return user.get("role") == "admin" and permission in {"workspace.manage", "members.invite", "members.manage", "teams.manage", "backups.manage", "permissions.manage"}
+    return fallback_role == "admin" and permission in {"workspace.manage", "members.invite", "members.manage", "teams.manage", "backups.manage", "permissions.manage"}
+
+
+def permissions_for_user(user: dict[str, Any]) -> list[str]:
+    """Return the effective workspace permission set for the current membership."""
+    if user.get("role") == "owner":
+        return sorted(PERMISSION_KEYS)
+    with db() as conn:
+        if user.get("custom_role_id"):
+            rows = conn.execute(
+                "SELECT permission_key,allowed FROM workspace_custom_role_permissions WHERE workspace_id=? AND role_id=?",
+                (user["workspace_id"], user["custom_role_id"]),
+            ).fetchall()
+            # A custom role with an explicit all-deny matrix must stay empty;
+            # do not silently fall back to its base role just because no key is allowed.
+            if rows:
+                return sorted(r["permission_key"] for r in rows if r["allowed"])
+            base = conn.execute("SELECT base_role FROM workspace_custom_roles WHERE id=? AND workspace_id=?",
+                                (user["custom_role_id"], user["workspace_id"])).fetchone()
+            role = base["base_role"] if base else "member"
+        else:
+            role = user.get("role", "member")
+        rows = conn.execute("SELECT permission_key FROM workspace_role_permissions WHERE workspace_id=? AND role=? AND allowed=1",
+                            (user["workspace_id"], role)).fetchall()
+    if rows:
+        return sorted(r["permission_key"] for r in rows)
+    return sorted(DEFAULT_ROLE_PERMISSIONS.get(role, set()))
 
 
 def require_admin(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
@@ -620,10 +867,12 @@ def workspace_snapshot(workspace_id: str, current_user_id: str) -> dict[str, Any
         ).fetchall()
         tasks = [task_dict(conn, r) for r in task_rows]
         users = conn.execute(
-            """SELECT u.id,u.name,u.email,m.role,m.joined_at,
+            """SELECT u.id,u.name,u.email,m.role,m.custom_role_id,cr.name AS role_name,cr.color AS role_color,
+               u.avatar_key,u.avatar_updated_at,m.joined_at,
                (SELECT COUNT(DISTINCT ta.task_id) FROM task_assignees ta JOIN tasks t ON t.id=ta.task_id
                  WHERE ta.user_id=u.id AND t.workspace_id=? AND t.status!='done') AS open_tasks
                FROM users u JOIN memberships m ON m.user_id=u.id
+               LEFT JOIN workspace_custom_roles cr ON cr.id=m.custom_role_id
                WHERE m.workspace_id=? ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,u.name""",
             (workspace_id, workspace_id),
         ).fetchall()
@@ -646,6 +895,11 @@ def workspace_snapshot(workspace_id: str, current_user_id: str) -> dict[str, Any
             """SELECT id,email,role,expires_at,created_at FROM invitations WHERE workspace_id=?
                AND accepted_at IS NULL AND expires_at>? ORDER BY created_at DESC""", (workspace_id, now_iso())
         ).fetchall()
+        join_links = conn.execute(
+            """SELECT id,role,expires_at,max_uses,use_count,created_at FROM workspace_join_links
+               WHERE workspace_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY created_at DESC""",
+            (workspace_id, now_iso())
+        ).fetchall()
         notifications = conn.execute(
             """SELECT n.*,u.name AS actor_name FROM notifications n LEFT JOIN users u ON u.id=n.actor_id
                WHERE n.workspace_id=? AND n.user_id=? ORDER BY n.created_at DESC LIMIT 80""",
@@ -667,11 +921,15 @@ def workspace_snapshot(workspace_id: str, current_user_id: str) -> dict[str, Any
             WHERE a.workspace_id=? AND a.status='pending' ORDER BY a.requested_at DESC""", (workspace_id,)).fetchall()
         return {
             "tasks": tasks,
-            "users": [dict(r) for r in users],
+            "users": [{**dict(r), "avatarUrl": f"/api/users/{r['id']}/avatar?v={r['avatar_updated_at'] or ''}" if r['avatar_key'] else None,
+                       "roleName": r['role_name'] or {"owner":"مالک","admin":"مدیر","member":"عضو"}.get(r['role'],"عضو")}
+                      for r in users],
+            "customRoles": [dict(r) for r in conn.execute("SELECT r.id,r.name,r.color,r.base_role,r.created_at,COUNT(p.permission_key) AS permission_count FROM workspace_custom_roles r LEFT JOIN workspace_custom_role_permissions p ON p.role_id=r.id WHERE r.workspace_id=? GROUP BY r.id ORDER BY r.name", (workspace_id,)).fetchall()],
             "teams": teams,
             "projects": [dict(r) for r in projects],
             "activity": [dict(r) for r in activity],
             "invitations": [dict(r) for r in invitations],
+            "joinLinks": [dict(r) for r in join_links],
             "notifications": [dict(r) for r in notifications],
             "unreadNotifications": unread,
             "eventCursor": cursor,
@@ -713,8 +971,9 @@ def discover_lan_ips() -> list[str]:
 def network_info(request: Request) -> dict[str, Any]:
     ips = discover_lan_ips()
     host = request.url.hostname or "127.0.0.1"
-    port = int(os.getenv("BOTTLENECK_PORT", "1939"))
-    return {"host": host, "port": port, "lanIps": ips, "urls": [f"http://{ip}:{port}" for ip in ips]}
+    port = int(_server_setting("bind_port", os.getenv("BOTTLENECK_PORT") or "1939"))
+    scheme = "https" if request.url.scheme == "https" else "http"
+    return {"host": host, "port": port, "lanIps": ips, "urls": [f"{scheme}://{ip}:{port}" for ip in ips]}
 
 
 @app.post("/api/auth/register")
@@ -727,11 +986,22 @@ def register(payload: RegisterInput, response: Response) -> dict[str, Any]:
     now = now_iso()
     with db() as conn:
         existing_user = conn.execute("SELECT id FROM users WHERE email=? COLLATE NOCASE", (email,)).fetchone()
-        if existing_user and not payload.invite_code:
-            raise HTTPException(status_code=409, detail="با این ایمیل قبلاً حساب ساخته شده است؛ برای پیوستن به فضای جدید وارد حساب شوید و دعوت را بپذیرید.")
-        if existing_user and payload.invite_code:
-            raise HTTPException(status_code=409, detail="این ایمیل حساب دارد؛ ابتدا وارد شوید و سپس دعوت‌نامه را بپذیرید.")
-        if payload.invite_code:
+        if existing_user:
+            if payload.join_token or payload.invite_code:
+                raise HTTPException(status_code=409, detail="این ایمیل از قبل حساب دارد؛ از بخش ورود وارد شوید و سپس لینک عضویت را باز کنید.")
+            raise HTTPException(status_code=409, detail="با این ایمیل قبلاً حساب ساخته شده است؛ وارد حساب خود شوید.")
+
+        join_link = None
+        invite = None
+        if payload.join_token:
+            join_link = conn.execute(
+                "SELECT * FROM workspace_join_links WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?",
+                (hash_token(payload.join_token), now),
+            ).fetchone()
+            if not join_link or (int(join_link["max_uses"]) > 0 and int(join_link["use_count"]) >= int(join_link["max_uses"])):
+                raise HTTPException(status_code=400, detail="لینک عضویت معتبر نیست، لغو شده یا ظرفیت آن تکمیل شده است.")
+            workspace_id = join_link["workspace_id"]
+        elif payload.invite_code:
             invite = conn.execute(
                 "SELECT * FROM invitations WHERE token_hash=? AND accepted_at IS NULL AND expires_at>?",
                 (hash_token(payload.invite_code), now),
@@ -741,9 +1011,28 @@ def register(payload: RegisterInput, response: Response) -> dict[str, Any]:
             if invite["email"].lower() != email:
                 raise HTTPException(status_code=400, detail="ایمیل ثبت‌نام باید با ایمیل دعوت‌شده یکسان باشد.")
             workspace_id = invite["workspace_id"]
-            conn.execute("INSERT INTO users(id,name,email,password_hash,created_at) VALUES(?,?,?,?,?)",
-                         (user_id, name, email, password_hash(payload.password), now))
-            conn.execute("INSERT OR IGNORE INTO notification_preferences(user_id,updated_at) VALUES(?,?)", (user_id, now))
+
+        conn.execute("INSERT INTO users(id,name,email,password_hash,created_at) VALUES(?,?,?,?,?)",
+                     (user_id, name, email, password_hash(payload.password), now))
+        conn.execute("INSERT OR IGNORE INTO notification_preferences(user_id,updated_at) VALUES(?,?)", (user_id, now))
+
+        if join_link:
+            conn.execute("INSERT INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)",
+                         (new_id(), workspace_id, user_id, join_link["role"], now))
+            changed = conn.execute(
+                "UPDATE workspace_join_links SET use_count=use_count+1 WHERE id=? AND revoked_at IS NULL AND expires_at>? AND (max_uses=0 OR use_count<max_uses)",
+                (join_link["id"], now),
+            )
+            if changed.rowcount != 1:
+                raise HTTPException(status_code=409, detail="ظرفیت لینک عضویت در همین لحظه تکمیل شد؛ از مدیر فضای کار لینک تازه بگیرید.")
+            default_team = conn.execute("SELECT id FROM teams WHERE workspace_id=? ORDER BY created_at LIMIT 1", (workspace_id,)).fetchone()
+            if default_team:
+                conn.execute("INSERT OR IGNORE INTO team_members(team_id,user_id,created_at) VALUES(?,?,?)", (default_team["id"], user_id, now))
+            log_activity(conn, workspace_id, user_id, "member", user_id, "joined", f"{name} با لینک امن به فضای کار پیوست.")
+            owner = conn.execute("SELECT created_by FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+            if owner:
+                create_notification(conn, workspace_id, owner["created_by"], user_id, "member", "عضو جدید به فضای کار پیوست", name, "member", user_id)
+        elif invite:
             conn.execute("INSERT INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)",
                          (new_id(), workspace_id, user_id, invite["role"], now))
             conn.execute("UPDATE invitations SET accepted_at=? WHERE id=?", (now, invite["id"]))
@@ -758,9 +1047,6 @@ def register(payload: RegisterInput, response: Response) -> dict[str, Any]:
             workspace_name = (payload.workspace_name or "فضای کاری من").strip()
             if len(workspace_name) < 2:
                 raise HTTPException(status_code=422, detail="نام فضای کار باید دست‌کم دو نویسه باشد.")
-            conn.execute("INSERT INTO users(id,name,email,password_hash,created_at) VALUES(?,?,?,?,?)",
-                         (user_id, name, email, password_hash(payload.password), now))
-            conn.execute("INSERT OR IGNORE INTO notification_preferences(user_id,updated_at) VALUES(?,?)", (user_id, now))
             conn.execute("INSERT INTO workspaces(id,name,created_by,created_at) VALUES(?,?,?,?)", (workspace_id, workspace_name, user_id, now))
             conn.execute("INSERT INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)", (new_id(), workspace_id, user_id, "owner", now))
             conn.execute("INSERT INTO workspace_settings(workspace_id,created_at) VALUES(?,?)", (workspace_id, now))
@@ -796,12 +1082,12 @@ def login(payload: LoginInput, response: Response) -> dict[str, Any]:
         if security and security["totp_enabled"]:
             token = secrets.token_urlsafe(36)
             conn.execute("DELETE FROM login_challenges WHERE expires_at<?", (now_iso(),))
-            conn.execute("INSERT INTO login_challenges(id,user_id,workspace_id,token_hash,expires_at,created_at) VALUES(?,?,?,?,?,?)",
-                         (new_id(), row["id"], row["workspace_id"], hash_token(token), (datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat(), now_iso()))
+            conn.execute("INSERT INTO login_challenges(id,user_id,workspace_id,token_hash,expires_at,created_at,remember_me) VALUES(?,?,?,?,?,?,?)",
+                         (new_id(), row["id"], row["workspace_id"], hash_token(token), (datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat(), now_iso(), 1 if payload.remember_me else 0))
             return {"ok": False, "twoFactorRequired": True, "challengeToken": token}
         conn.execute("DELETE FROM sessions WHERE expires_at<?", (now_iso(),))
         user_id, workspace_id = row["id"], row["workspace_id"]
-    create_session(response, user_id, workspace_id)
+    create_session(response, user_id, workspace_id, payload.remember_me)
     return {"ok": True, "twoFactorRequired": False}
 
 
@@ -823,9 +1109,10 @@ def verify_login_totp(payload: TotpVerifyInput, request: Request, response: Resp
         else:
             conn.execute("DELETE FROM login_challenges WHERE id=?", (challenge["id"],))
             user_id, workspace_id = challenge["user_id"], challenge["workspace_id"]
+            remember_me = bool(challenge["remember_me"])
     if invalid:
         raise HTTPException(status_code=401, detail="کد تأیید معتبر نیست یا تلاش‌های ورود بیش از حد شده است.")
-    create_session(response, user_id, workspace_id)
+    create_session(response, user_id, workspace_id, remember_me)
     return {"ok": True}
 
 
@@ -842,8 +1129,14 @@ def logout(request: Request, response: Response) -> dict[str, bool]:
 @app.get("/api/me")
 def me(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     return {"id": user["user_id"], "name": user["name"], "email": user["email"], "role": user["role"],
+            "roleName": user.get("custom_role_name") or {"owner":"مالک","admin":"مدیر","member":"عضو"}.get(user["role"],"عضو"),
+            "customRoleId": user.get("custom_role_id"), "roleColor": user.get("custom_role_color"),
+            "avatarUrl": f"/api/users/{user['user_id']}/avatar?v={user.get('avatar_updated_at') or ''}" if user.get("avatar_key") else None,
             "workspaceId": user["workspace_id"], "workspaceName": user["workspace_name"],
-            "onboardingCompleted": bool(user["onboarding_completed"]), "canManage": has_permission(user, "workspace.manage")}
+            "onboardingCompleted": bool(user["onboarding_completed"]), "canManage": has_permission(user, "workspace.manage"),
+            "permissions": permissions_for_user(user),
+            "instanceAdmin": is_instance_admin(user["user_id"]),
+            "serverAdminRole": (server_admin_record(user["user_id"]) or {}).get("role")}
 
 
 @app.patch("/api/me")
@@ -852,6 +1145,58 @@ def update_me(payload: ProfileInput, user: dict[str, Any] = Depends(current_user
         conn.execute("UPDATE users SET name=? WHERE id=?", (payload.name.strip(), user["user_id"]))
         log_activity(conn, user["workspace_id"], user["user_id"], "profile", user["user_id"], "updated", "نام حساب کاربری به‌روزرسانی شد.")
     return {"ok": True}
+
+
+@app.post("/api/me/avatar")
+async def upload_my_avatar(request: Request, x_filename: str = Header(default="avatar"), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=413, detail="تصویر باید کمتر از ۳ مگابایت باشد.")
+    raw = await request.body()
+    if not raw or len(raw) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=413, detail="تصویر باید کمتر از ۳ مگابایت باشد.")
+    mime = (request.headers.get("content-type") or "").split(";",1)[0].lower()
+    signatures = {"image/jpeg": (b"\xff\xd8\xff", ".jpg"), "image/png": (b"\x89PNG\r\n\x1a\n", ".png"),
+                  "image/webp": (b"RIFF", ".webp"), "image/gif": (b"GIF8", ".gif")}
+    if mime not in signatures or not raw.startswith(signatures[mime][0]) or (mime == "image/webp" and raw[8:12] != b"WEBP"):
+        raise HTTPException(status_code=415, detail="فقط تصویر JPEG، PNG، WebP یا GIF پذیرفته می‌شود.")
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    CHAT_DIR.mkdir(parents=True, exist_ok=True)
+    key = f"{uuid.uuid4().hex}{signatures[mime][1]}"
+    path = AVATAR_DIR / key
+    path.write_bytes(raw)
+    with db() as conn:
+        old = conn.execute("SELECT avatar_key FROM users WHERE id=?", (user["user_id"],)).fetchone()
+        conn.execute("UPDATE users SET avatar_key=?,avatar_updated_at=? WHERE id=?", (key,now_iso(),user["user_id"]))
+        if old and old["avatar_key"]:
+            (AVATAR_DIR / old["avatar_key"]).unlink(missing_ok=True)
+        log_activity(conn,user["workspace_id"],user["user_id"],"profile",user["user_id"],"avatar_updated","تصویر نمایه به‌روزرسانی شد.")
+    return {"ok":True,"avatarUrl":f"/api/users/{user['user_id']}/avatar?v={int(time.time())}"}
+
+
+@app.delete("/api/me/avatar")
+def delete_my_avatar(user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+    with db() as conn:
+        row = conn.execute("SELECT avatar_key FROM users WHERE id=?", (user["user_id"],)).fetchone()
+        conn.execute("UPDATE users SET avatar_key=NULL,avatar_updated_at=NULL WHERE id=?", (user["user_id"],))
+        if row and row["avatar_key"]:
+            (AVATAR_DIR / row["avatar_key"]).unlink(missing_ok=True)
+        log_activity(conn,user["workspace_id"],user["user_id"],"profile",user["user_id"],"avatar_removed","تصویر نمایه حذف شد.")
+    return {"ok":True}
+
+
+@app.get("/api/users/{user_id}/avatar")
+def get_user_avatar(user_id: str, user: dict[str, Any] = Depends(current_user)) -> Response:
+    with db() as conn:
+        row = conn.execute("SELECT avatar_key FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.id=? AND m.workspace_id=?",
+                           (user_id,user["workspace_id"])).fetchone()
+    if not row or not row["avatar_key"]:
+        raise HTTPException(status_code=404, detail="تصویر نمایه ثبت نشده است.")
+    path = (AVATAR_DIR / row["avatar_key"]).resolve()
+    if path.parent != AVATAR_DIR.resolve() or not path.is_file():
+        raise HTTPException(status_code=404, detail="تصویر نمایه پیدا نشد.")
+    media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return FileResponse(path, media_type=media, headers={"Cache-Control":"private, max-age=300"})
 
 
 @app.post("/api/me/onboarding")
@@ -864,8 +1209,13 @@ def update_onboarding(payload: OnboardingInput, user: dict[str, Any] = Depends(c
 @app.get("/api/bootstrap")
 def bootstrap(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     me_data = {"id": user["user_id"], "name": user["name"], "email": user["email"], "role": user["role"],
+               "roleName": user.get("custom_role_name") or {"owner":"مالک","admin":"مدیر","member":"عضو"}.get(user["role"],"عضو"),
+               "customRoleId": user.get("custom_role_id"), "roleColor": user.get("custom_role_color"),
+               "avatarUrl": f"/api/users/{user['user_id']}/avatar?v={user.get('avatar_updated_at') or ''}" if user.get("avatar_key") else None,
                "workspaceId": user["workspace_id"], "workspaceName": user["workspace_name"],
-               "onboardingCompleted": bool(user["onboarding_completed"]), "canManage": has_permission(user, "workspace.manage")}
+               "onboardingCompleted": bool(user["onboarding_completed"]), "canManage": has_permission(user, "workspace.manage"),
+               "permissions": permissions_for_user(user), "instanceAdmin": is_instance_admin(user["user_id"]),
+               "serverAdminRole": (server_admin_record(user["user_id"]) or {}).get("role")}
     generate_due_recurring(user["workspace_id"])
     with db() as conn:
         workspaces = [dict(r) for r in conn.execute("""SELECT w.id,w.name,m.role FROM memberships m JOIN workspaces w ON w.id=m.workspace_id
@@ -886,7 +1236,7 @@ def updates(after_id: int = 0, user: dict[str, Any] = Depends(current_user)) -> 
 
 
 @app.post("/api/tasks")
-def create_task(payload: TaskInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def create_task(payload: TaskInput, user: dict[str, Any] = Depends(require_permission("tasks.create"))) -> dict[str, Any]:
     if payload.status not in STATUSES or payload.priority not in PRIORITIES:
         raise HTTPException(status_code=422, detail="وضعیت یا اولویت انتخاب‌شده معتبر نیست.")
     task_id, now = new_id(), now_iso()
@@ -913,7 +1263,7 @@ def create_task(payload: TaskInput, user: dict[str, Any] = Depends(current_user)
 
 
 @app.patch("/api/tasks/{task_id}")
-def update_task(task_id: str, payload: TaskInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def update_task(task_id: str, payload: TaskInput, user: dict[str, Any] = Depends(require_permission("tasks.update"))) -> dict[str, Any]:
     if payload.status not in STATUSES or payload.priority not in PRIORITIES:
         raise HTTPException(status_code=422, detail="وضعیت یا اولویت انتخاب‌شده معتبر نیست.")
     now = now_iso()
@@ -953,7 +1303,7 @@ def update_task(task_id: str, payload: TaskInput, user: dict[str, Any] = Depends
 
 
 @app.delete("/api/tasks/{task_id}")
-def delete_task(task_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+def delete_task(task_id: str, user: dict[str, Any] = Depends(require_permission("tasks.delete"))) -> dict[str, bool]:
     if not has_permission(user, "tasks.delete"):
         raise HTTPException(status_code=403, detail="نقش شما مجوز حذف کارها را ندارد.")
     with db() as conn:
@@ -980,7 +1330,7 @@ def list_comments(task_id: str, user: dict[str, Any] = Depends(current_user)) ->
 
 
 @app.post("/api/tasks/{task_id}/comments")
-def add_comment(task_id: str, payload: CommentInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def add_comment(task_id: str, payload: CommentInput, user: dict[str, Any] = Depends(require_permission("comments.create"))) -> dict[str, Any]:
     with db() as conn:
         task = get_task_row(conn,user["workspace_id"],task_id)
         comment_id, now = new_id(), now_iso()
@@ -1002,7 +1352,7 @@ def get_checklist(task_id: str, user: dict[str, Any] = Depends(current_user)) ->
 
 
 @app.post("/api/tasks/{task_id}/checklist")
-def add_checklist(task_id: str, payload: ChecklistInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def add_checklist(task_id: str, payload: ChecklistInput, user: dict[str, Any] = Depends(require_permission("tasks.checklist"))) -> dict[str, Any]:
     with db() as conn:
         task = get_task_row(conn,user["workspace_id"],task_id)
         pos = conn.execute("SELECT COALESCE(MAX(position),0)+1 FROM task_checklists WHERE task_id=?", (task_id,)).fetchone()[0]
@@ -1014,7 +1364,7 @@ def add_checklist(task_id: str, payload: ChecklistInput, user: dict[str, Any] = 
 
 
 @app.patch("/api/tasks/{task_id}/checklist/{item_id}")
-def toggle_checklist(task_id: str, item_id: str, payload: ChecklistToggleInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def toggle_checklist(task_id: str, item_id: str, payload: ChecklistToggleInput, user: dict[str, Any] = Depends(require_permission("tasks.checklist"))) -> dict[str, Any]:
     with db() as conn:
         task = get_task_row(conn,user["workspace_id"],task_id)
         row = conn.execute("SELECT * FROM task_checklists WHERE id=? AND task_id=?", (item_id,task_id)).fetchone()
@@ -1027,7 +1377,7 @@ def toggle_checklist(task_id: str, item_id: str, payload: ChecklistToggleInput, 
 
 
 @app.delete("/api/tasks/{task_id}/checklist/{item_id}")
-def delete_checklist(task_id: str, item_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+def delete_checklist(task_id: str, item_id: str, user: dict[str, Any] = Depends(require_permission("tasks.checklist"))) -> dict[str, bool]:
     with db() as conn:
         task = get_task_row(conn,user["workspace_id"],task_id)
         cur = conn.execute("DELETE FROM task_checklists WHERE id=? AND task_id=?", (item_id,task_id))
@@ -1048,7 +1398,7 @@ def list_attachments(task_id: str, user: dict[str, Any] = Depends(current_user))
 
 
 @app.post("/api/tasks/{task_id}/attachments")
-async def upload_attachment(task_id: str, request: Request, x_filename: str = Header(default="attachment"), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+async def upload_attachment(task_id: str, request: Request, x_filename: str = Header(default="attachment"), user: dict[str, Any] = Depends(require_permission("tasks.attachments"))) -> dict[str, Any]:
     raw_name = unquote(x_filename).replace("\\", "/").split("/")[-1].strip()
     suffix = Path(raw_name).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
@@ -1085,7 +1435,7 @@ def download_attachment(attachment_id: str, user: dict[str, Any] = Depends(curre
 
 
 @app.delete("/api/attachments/{attachment_id}")
-def delete_attachment(attachment_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+def delete_attachment(attachment_id: str, user: dict[str, Any] = Depends(require_permission("tasks.attachments"))) -> dict[str, bool]:
     with db() as conn:
         row = conn.execute("SELECT * FROM task_attachments WHERE id=? AND workspace_id=?", (attachment_id,user["workspace_id"])).fetchone()
         if not row: raise HTTPException(status_code=404, detail="پیوست پیدا نشد.")
@@ -1111,7 +1461,7 @@ def list_task_time(task_id: str, user: dict[str, Any] = Depends(current_user)) -
 
 
 @app.post("/api/tasks/{task_id}/time/start")
-def start_task_timer(task_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def start_task_timer(task_id: str, user: dict[str, Any] = Depends(require_permission("tasks.time"))) -> dict[str, Any]:
     with db() as conn:
         task = get_task_row(conn, user["workspace_id"], task_id)
         existing = conn.execute("SELECT id FROM time_entries WHERE workspace_id=? AND user_id=? AND ended_at IS NULL",
@@ -1126,7 +1476,7 @@ def start_task_timer(task_id: str, user: dict[str, Any] = Depends(current_user))
 
 
 @app.post("/api/time/stop")
-def stop_task_timer(payload: TimeStopInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def stop_task_timer(payload: TimeStopInput, user: dict[str, Any] = Depends(require_permission("tasks.time"))) -> dict[str, Any]:
     with db() as conn:
         if payload.entry_id:
             row = conn.execute("SELECT * FROM time_entries WHERE id=? AND workspace_id=? AND user_id=? AND ended_at IS NULL",
@@ -1148,7 +1498,7 @@ def stop_task_timer(payload: TimeStopInput, user: dict[str, Any] = Depends(curre
 
 
 @app.get("/api/reports")
-def workspace_reports(period: str = "weekly", user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def workspace_reports(period: str = "weekly", user: dict[str, Any] = Depends(require_permission("reports.view"))) -> dict[str, Any]:
     if period not in {"daily", "weekly"}:
         raise HTTPException(status_code=422, detail="بازه گزارش باید روزانه یا هفتگی باشد.")
     now = datetime.now(timezone.utc)
@@ -1190,7 +1540,7 @@ def get_task_dependencies(task_id: str, user: dict[str, Any] = Depends(current_u
 
 
 @app.put("/api/tasks/{task_id}/dependencies")
-def set_task_dependencies(task_id: str, payload: DependencyInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def set_task_dependencies(task_id: str, payload: DependencyInput, user: dict[str, Any] = Depends(require_permission("tasks.dependencies"))) -> dict[str, Any]:
     dep_ids = list(dict.fromkeys(x for x in payload.dependency_ids if x))
     if task_id in dep_ids:
         raise HTTPException(status_code=422, detail="یک کار نمی‌تواند پیش‌نیاز خودش باشد.")
@@ -1226,7 +1576,7 @@ def list_recurring(user: dict[str, Any] = Depends(current_user)) -> list[dict[st
 
 
 @app.post("/api/recurring")
-def create_recurring(payload: RecurringInput, user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def create_recurring(payload: RecurringInput, user: dict[str, Any] = Depends(require_permission("recurring.manage"))) -> dict[str, Any]:
     if payload.priority not in PRIORITIES or payload.cadence not in {"daily", "weekly", "monthly"}:
         raise HTTPException(status_code=422, detail="اولویت یا تناوب تکرار معتبر نیست.")
     try:
@@ -1263,7 +1613,7 @@ def create_recurring(payload: RecurringInput, user: dict[str, Any] = Depends(req
 
 
 @app.patch("/api/recurring/{rule_id}/toggle")
-def toggle_recurring(rule_id: str, user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def toggle_recurring(rule_id: str, user: dict[str, Any] = Depends(require_permission("recurring.manage"))) -> dict[str, Any]:
     with db() as conn:
         rule = conn.execute("SELECT * FROM recurring_rules WHERE id=? AND workspace_id=?", (rule_id,user["workspace_id"])).fetchone()
         if not rule: raise HTTPException(status_code=404, detail="الگوی تکرار پیدا نشد.")
@@ -1274,7 +1624,7 @@ def toggle_recurring(rule_id: str, user: dict[str, Any] = Depends(require_admin)
 
 
 @app.delete("/api/recurring/{rule_id}")
-def delete_recurring(rule_id: str, user: dict[str, Any] = Depends(require_admin)) -> dict[str, bool]:
+def delete_recurring(rule_id: str, user: dict[str, Any] = Depends(require_permission("recurring.manage"))) -> dict[str, bool]:
     with db() as conn:
         rule = conn.execute("SELECT title FROM recurring_rules WHERE id=? AND workspace_id=?", (rule_id,user["workspace_id"])).fetchone()
         if not rule: raise HTTPException(status_code=404, detail="الگوی تکرار پیدا نشد.")
@@ -1299,7 +1649,7 @@ def list_templates(user: dict[str, Any] = Depends(current_user)) -> list[dict[st
 
 
 @app.post("/api/templates")
-def create_template(payload: TemplateInput, user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def create_template(payload: TemplateInput, user: dict[str, Any] = Depends(require_permission("templates.manage"))) -> dict[str, Any]:
     if payload.priority not in PRIORITIES:
         raise HTTPException(status_code=422, detail="اولویت معتبر نیست.")
     with db() as conn:
@@ -1319,7 +1669,7 @@ def create_template(payload: TemplateInput, user: dict[str, Any] = Depends(requi
 
 
 @app.post("/api/templates/{template_id}/create-task")
-def create_task_from_template(template_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def create_task_from_template(template_id: str, user: dict[str, Any] = Depends(require_permission("tasks.create"))) -> dict[str, Any]:
     with db() as conn:
         t=conn.execute("SELECT * FROM task_templates WHERE id=? AND workspace_id=?",(template_id,user["workspace_id"])).fetchone()
         if not t: raise HTTPException(status_code=404,detail="قالب پیدا نشد.")
@@ -1343,7 +1693,7 @@ def create_task_from_template(template_id: str, user: dict[str, Any] = Depends(c
 
 
 @app.delete("/api/templates/{template_id}")
-def delete_template(template_id: str, user: dict[str, Any] = Depends(require_admin)) -> dict[str, bool]:
+def delete_template(template_id: str, user: dict[str, Any] = Depends(require_permission("templates.manage"))) -> dict[str, bool]:
     with db() as conn:
         row=conn.execute("SELECT name FROM task_templates WHERE id=? AND workspace_id=?",(template_id,user["workspace_id"])).fetchone()
         if not row: raise HTTPException(status_code=404,detail="قالب پیدا نشد.")
@@ -1362,7 +1712,7 @@ def list_task_approvals(task_id: str, user: dict[str, Any] = Depends(current_use
 
 
 @app.post("/api/tasks/{task_id}/approvals")
-def request_task_approval(task_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def request_task_approval(task_id: str, user: dict[str, Any] = Depends(require_permission("tasks.update"))) -> dict[str, Any]:
     with db() as conn:
         task=get_task_row(conn,user["workspace_id"],task_id)
         pending=conn.execute("SELECT id FROM task_approvals WHERE task_id=? AND status='pending'",(task_id,)).fetchone()
@@ -1380,7 +1730,7 @@ def request_task_approval(task_id: str, user: dict[str, Any] = Depends(current_u
 
 
 @app.patch("/api/approvals/{approval_id}")
-def decide_approval(approval_id: str, payload: ApprovalDecisionInput, user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def decide_approval(approval_id: str, payload: ApprovalDecisionInput, user: dict[str, Any] = Depends(require_permission("approvals.manage"))) -> dict[str, Any]:
     if payload.status not in {"approved","rejected"}:
         raise HTTPException(status_code=422,detail="تصمیم باید تأیید یا رد باشد.")
     with db() as conn:
@@ -1428,7 +1778,7 @@ def list_projects(user: dict[str, Any] = Depends(current_user)) -> list[dict[str
 
 
 @app.post("/api/projects")
-def create_project(payload: ProjectInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def create_project(payload: ProjectInput, user: dict[str, Any] = Depends(require_permission("projects.create"))) -> dict[str, Any]:
     project_id, now = new_id(), now_iso()
     with db() as conn:
         conn.execute("INSERT INTO projects(id,workspace_id,name,description,color,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
@@ -1438,7 +1788,7 @@ def create_project(payload: ProjectInput, user: dict[str, Any] = Depends(current
 
 
 @app.patch("/api/projects/{project_id}")
-def update_project(project_id: str, payload: ProjectInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def update_project(project_id: str, payload: ProjectInput, user: dict[str, Any] = Depends(require_permission("projects.update"))) -> dict[str, Any]:
     now = now_iso()
     with db() as conn:
         exists = conn.execute("SELECT id FROM projects WHERE id=? AND workspace_id=?", (project_id,user["workspace_id"])).fetchone()
@@ -1501,12 +1851,13 @@ def delete_team(team_id: str, user: dict[str, Any] = Depends(require_permission(
 def create_invitation(payload: InviteInput, request: Request, user: dict[str, Any] = Depends(require_permission("members.invite"))) -> dict[str, Any]:
     email = valid_email(payload.email)
     role = payload.role if payload.role in {"admin", "member"} else "member"
+    if role == "admin" and user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="فقط مالک فضای کاری می‌تواند دعوت با نقش مدیر ایجاد کند.")
     with db() as conn:
         existing = conn.execute("SELECT id FROM users WHERE email=? COLLATE NOCASE", (email,)).fetchone()
         if existing:
             already = conn.execute("SELECT id FROM memberships WHERE user_id=? AND workspace_id=?", (existing["id"],user["workspace_id"])).fetchone()
             if already: raise HTTPException(status_code=409, detail="این کاربر هم‌اکنون عضو فضای کار است.")
-            raise HTTPException(status_code=409, detail="این ایمیل از قبل حساب دارد و در این نسخه نمی‌تواند با دعوت‌نامه به فضای دیگری منتقل شود.")
         invite = conn.execute("SELECT id FROM invitations WHERE workspace_id=? AND email=? COLLATE NOCASE AND accepted_at IS NULL AND expires_at>?",
                               (user["workspace_id"],email,now_iso())).fetchone()
         if invite: raise HTTPException(status_code=409, detail="برای این ایمیل دعوت فعال وجود دارد.")
@@ -1521,8 +1872,99 @@ def create_invitation(payload: InviteInput, request: Request, user: dict[str, An
     if request_host in {"127.0.0.1", "localhost", "0.0.0.0"}:
         lan_ips = discover_lan_ips()
         request_host = lan_ips[0] if lan_ips else request_host
-    invite_url = f"http://{request_host}:{port}/?invite={raw_token}"
+    scheme = "https" if request.url.scheme == "https" or COOKIE_SECURE else "http"
+    invite_url = f"{scheme}://{request_host}:{port}/#invite={raw_token}"
     return {"id":invite_id,"email":email,"role":role,"inviteCode":raw_token,"inviteUrl":invite_url,"expiresAt":expires}
+
+
+@app.post("/api/workspace-join-links")
+def create_workspace_join_link(payload: WorkspaceJoinLinkInput, request: Request,
+                               user: dict[str, Any] = Depends(require_permission("members.invite"))) -> dict[str, Any]:
+    role = payload.role if payload.role in {"admin", "member"} else "member"
+    if role == "admin" and user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="فقط مالک فضای کاری می‌تواند لینک عضویت با نقش مدیر بسازد.")
+    raw_token = secrets.token_urlsafe(48)
+    link_id = new_id()
+    stamp = now_iso()
+    expires = (datetime.now(timezone.utc) + timedelta(days=payload.expires_days)).replace(microsecond=0).isoformat()
+    with db() as conn:
+        conn.execute("""INSERT INTO workspace_join_links
+            (id,workspace_id,role,token_hash,created_by,expires_at,max_uses,use_count,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?)""",
+            (link_id,user["workspace_id"],role,hash_token(raw_token),user["user_id"],expires,payload.max_uses,0,stamp))
+        log_activity(conn,user["workspace_id"],user["user_id"],"workspace_join_link",link_id,"created","یک لینک امن عضویت ساخته شد.")
+    host = request.url.hostname or "127.0.0.1"
+    port = int(os.getenv("BOTTLENECK_PORT", "1939"))
+    if host in {"127.0.0.1", "localhost", "0.0.0.0"}:
+        ips = discover_lan_ips()
+        host = ips[0] if ips else host
+    scheme = "https" if request.url.scheme == "https" or COOKIE_SECURE else "http"
+    url = f"{scheme}://{host}:{port}/#join={raw_token}"
+    return {"id":link_id,"role":role,"expiresAt":expires,"maxUses":payload.max_uses,"joinUrl":url}
+
+
+@app.get("/api/workspace-join-links/{token}")
+def preview_workspace_join_link(token: str) -> dict[str, Any]:
+    with db() as conn:
+        row = conn.execute("""SELECT l.role,l.expires_at,l.max_uses,l.use_count,w.name AS workspace_name
+            FROM workspace_join_links l JOIN workspaces w ON w.id=l.workspace_id
+            WHERE l.token_hash=? AND l.revoked_at IS NULL AND l.expires_at>?""",(hash_token(token),now_iso())).fetchone()
+        if not row or (row["max_uses"] and row["use_count"] >= row["max_uses"]):
+            raise HTTPException(status_code=404,detail="لینک عضویت معتبر نیست یا منقضی شده است.")
+    return {"workspaceName":row["workspace_name"],"role":row["role"],"expiresAt":row["expires_at"],"remainingUses":None if not row["max_uses"] else max(0,row["max_uses"]-row["use_count"])}
+
+
+def _accept_workspace_join_link(token: str, request: Request, user: dict[str, Any]) -> dict[str, Any]:
+    stamp = now_iso()
+    session_token = request.cookies.get(COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401,detail="برای پیوستن ابتدا وارد حساب شوید.")
+    with db() as conn:
+        link = conn.execute("""SELECT * FROM workspace_join_links WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?""",
+                            (hash_token(token),stamp)).fetchone()
+        if not link or (link["max_uses"] and link["use_count"] >= link["max_uses"]):
+            raise HTTPException(status_code=404,detail="لینک عضویت معتبر نیست، لغو شده یا ظرفیت آن تکمیل شده است.")
+        workspace_id = link["workspace_id"]
+        existing = conn.execute("SELECT 1 FROM memberships WHERE workspace_id=? AND user_id=?",(workspace_id,user["user_id"])).fetchone()
+        if not existing:
+            conn.execute("INSERT INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)",
+                         (new_id(),workspace_id,user["user_id"],link["role"],stamp))
+            changed = conn.execute("""UPDATE workspace_join_links SET use_count=use_count+1
+                WHERE id=? AND revoked_at IS NULL AND expires_at>? AND (max_uses=0 OR use_count<max_uses)""",(link["id"],stamp))
+            if changed.rowcount != 1:
+                raise HTTPException(status_code=409,detail="ظرفیت لینک عضویت در همین لحظه تکمیل شد.")
+            default_team = conn.execute("SELECT id FROM teams WHERE workspace_id=? ORDER BY created_at LIMIT 1",(workspace_id,)).fetchone()
+            if default_team:
+                conn.execute("INSERT OR IGNORE INTO team_members(team_id,user_id,created_at) VALUES(?,?,?)",(default_team["id"],user["user_id"],stamp))
+            log_activity(conn,workspace_id,user["user_id"],"member",user["user_id"],"joined",f"{user['name']} با لینک امن به فضای کار پیوست.")
+            owner = conn.execute("SELECT created_by FROM workspaces WHERE id=?",(workspace_id,)).fetchone()
+            if owner:
+                create_notification(conn,workspace_id,owner["created_by"],user["user_id"],"member","عضو جدید به فضای کار پیوست",user["name"],"member",user["user_id"])
+        conn.execute("UPDATE sessions SET workspace_id=? WHERE token_hash=? AND user_id=?",(workspace_id,hash_token(session_token),user["user_id"]))
+    return {"ok":True,"workspaceId":workspace_id,"alreadyMember":bool(existing)}
+
+
+@app.post("/api/workspace-join/accept")
+def accept_workspace_join_link_body(payload: LinkTokenInput, request: Request,
+                                   user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _accept_workspace_join_link(payload.token, request, user)
+
+
+@app.post("/api/workspace-join-links/{token}/accept")
+def accept_workspace_join_link(token: str, request: Request,
+                               user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _accept_workspace_join_link(token, request, user)
+
+
+@app.delete("/api/workspace-join-links/{link_id}")
+def revoke_workspace_join_link(link_id: str,user: dict[str, Any] = Depends(require_permission("members.manage"))) -> dict[str,bool]:
+    with db() as conn:
+        cur=conn.execute("UPDATE workspace_join_links SET revoked_at=? WHERE id=? AND workspace_id=? AND revoked_at IS NULL",
+                         (now_iso(),link_id,user["workspace_id"]))
+        if not cur.rowcount:
+            raise HTTPException(status_code=404,detail="لینک عضویت پیدا نشد.")
+        log_activity(conn,user["workspace_id"],user["user_id"],"workspace_join_link",link_id,"revoked","یک لینک عضویت لغو شد.")
+    return {"ok":True}
 
 
 @app.delete("/api/invitations/{invitation_id}")
@@ -1675,7 +2117,7 @@ def list_shared_boards(user: dict[str, Any] = Depends(current_user)) -> list[dic
 
 
 @app.post("/api/boards")
-def create_shared_board(payload: BoardInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def create_shared_board(payload: BoardInput, user: dict[str, Any] = Depends(require_permission("boards.manage"))) -> dict[str, Any]:
     with db() as conn:
         encoded = validate_share_settings(conn, user["workspace_id"], payload.access_mode,
                                            payload.team_id, payload.password, user)
@@ -1710,7 +2152,7 @@ def list_board_items(board_id: str, password: str | None = None,
 
 @app.post("/api/boards/{board_id}/items")
 def create_board_item(board_id: str, payload: BoardItemInput, password: str | None = None,
-                      user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+                      user: dict[str, Any] = Depends(require_permission("boards.manage"))) -> dict[str, Any]:
     if payload.item_type not in {"note", "text", "link", "task"}:
         raise HTTPException(status_code=422, detail="نوع کارت برد معتبر نیست.")
     if payload.item_type == "link" and payload.url and not payload.url.startswith(("https://", "http://")):
@@ -1733,7 +2175,7 @@ def create_board_item(board_id: str, payload: BoardItemInput, password: str | No
 
 @app.patch("/api/boards/{board_id}/items/{item_id}")
 def update_board_item(board_id: str, item_id: str, payload: BoardItemInput, password: str | None = None,
-                      user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+                      user: dict[str, Any] = Depends(require_permission("boards.manage"))) -> dict[str, bool]:
     if payload.item_type not in {"note", "text", "link", "task"}:
         raise HTTPException(status_code=422, detail="نوع کارت برد معتبر نیست.")
     if payload.item_type == "link" and payload.url and not payload.url.startswith(("https://", "http://")):
@@ -1757,7 +2199,7 @@ def update_board_item(board_id: str, item_id: str, payload: BoardItemInput, pass
 
 @app.delete("/api/boards/{board_id}/items/{item_id}")
 def delete_board_item(board_id: str, item_id: str, password: str | None = None,
-                      user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+                      user: dict[str, Any] = Depends(require_permission("boards.manage"))) -> dict[str, bool]:
     with db() as conn:
         board = conn.execute("SELECT * FROM shared_boards WHERE id=? AND workspace_id=?", (board_id,user["workspace_id"])).fetchone()
         if not board: raise HTTPException(status_code=404, detail="برد پیدا نشد.")
@@ -1801,7 +2243,7 @@ def get_drive_node(node_id: str, password: str | None = None,
 
 
 @app.post("/api/drive/nodes")
-def create_drive_node(payload: DriveNodeInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def create_drive_node(payload: DriveNodeInput, user: dict[str, Any] = Depends(require_permission("drive.manage"))) -> dict[str, Any]:
     if payload.node_type not in {"folder","text"}:
         raise HTTPException(status_code=422,detail="نوع مورد باید پوشه یا یادداشت متنی باشد.")
     with db() as conn:
@@ -1822,7 +2264,7 @@ def create_drive_node(payload: DriveNodeInput, user: dict[str, Any] = Depends(cu
 
 @app.patch("/api/drive/nodes/{node_id}")
 def update_drive_node(node_id: str,payload: DriveNodeUpdateInput,password: str | None = None,
-                      user: dict[str, Any] = Depends(current_user)) -> dict[str,bool]:
+                      user: dict[str, Any] = Depends(require_permission("drive.manage"))) -> dict[str,bool]:
     with db() as conn:
         row=conn.execute("SELECT * FROM shared_nodes WHERE id=? AND workspace_id=?",(node_id,user["workspace_id"])).fetchone()
         if not row: raise HTTPException(status_code=404,detail="مورد پیدا نشد.")
@@ -1857,7 +2299,7 @@ def update_drive_node(node_id: str,payload: DriveNodeUpdateInput,password: str |
 
 
 @app.delete("/api/drive/nodes/{node_id}")
-def delete_drive_node(node_id: str,password: str | None = None,user: dict[str, Any] = Depends(current_user)) -> dict[str,bool]:
+def delete_drive_node(node_id: str,password: str | None = None,user: dict[str, Any] = Depends(require_permission("drive.manage"))) -> dict[str,bool]:
     with db() as conn:
         row=conn.execute("SELECT * FROM shared_nodes WHERE id=? AND workspace_id=?",(node_id,user["workspace_id"])).fetchone()
         if not row: raise HTTPException(status_code=404,detail="مورد پیدا نشد.")
@@ -1879,7 +2321,7 @@ def delete_drive_node(node_id: str,password: str | None = None,user: dict[str, A
 async def upload_drive_file(request: Request, parent_id: str | None = None,
                             access_mode: str = "workspace", team_id: str | None = None,
                             share_password: str | None = Header(default=None, alias="X-Share-Password"),
-                            user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+                            user: dict[str, Any] = Depends(require_permission("drive.manage"))) -> dict[str, Any]:
     raw_name = unquote(request.headers.get("x-file-name", "file.bin"))
     safe_name = Path(raw_name.replace("\\", "/")).name.strip() or "file.bin"
     ext = Path(safe_name).suffix.lower()
@@ -1946,58 +2388,320 @@ def download_drive_file(node_id: str,password: str | None = None,
         return FileResponse(path,media_type=row["content_type"] or "application/octet-stream",filename=row["original_name"] or row["title"],content_disposition_type="attachment")
 
 
+def _chat_channel_access(conn: sqlite3.Connection, user: dict[str, Any], channel_type: str, team_id: str | None) -> None:
+    if channel_type not in {"workspace", "team"}:
+        raise HTTPException(status_code=422, detail="کانال گفتگو معتبر نیست.")
+    if channel_type == "team":
+        if not team_id or not conn.execute("SELECT 1 FROM teams WHERE id=? AND workspace_id=?", (team_id, user["workspace_id"])).fetchone():
+            raise HTTPException(status_code=404, detail="تیم پیدا نشد.")
+        if not _team_member(conn, team_id, user):
+            raise HTTPException(status_code=403, detail="برای دسترسی به این کانال باید عضو تیم باشید.")
+
+
+def _chat_resource(conn: sqlite3.Connection, user: dict[str, Any], resource_type: str | None,
+                   resource_id: str | None) -> dict[str, Any] | None:
+    if not resource_type and not resource_id:
+        return None
+    if not resource_type or not resource_id or resource_type not in {"task", "project", "note", "file", "board"}:
+        raise HTTPException(status_code=422, detail="نوع پیوند داخل پیام معتبر نیست.")
+    if resource_type == "task":
+        row = conn.execute("SELECT id,title FROM tasks WHERE id=? AND workspace_id=?", (resource_id, user["workspace_id"])).fetchone()
+        if not row: raise HTTPException(status_code=404, detail="کار پیوندشده پیدا نشد.")
+        title = row["title"]
+    elif resource_type == "project":
+        row = conn.execute("SELECT id,name AS title FROM projects WHERE id=? AND workspace_id=?", (resource_id, user["workspace_id"])).fetchone()
+        if not row: raise HTTPException(status_code=404, detail="پروژه پیوندشده پیدا نشد.")
+        title = row["title"]
+    elif resource_type in {"note", "file"}:
+        row = conn.execute("SELECT * FROM shared_nodes WHERE id=? AND workspace_id=?", (resource_id, user["workspace_id"])).fetchone()
+        if not row or row["node_type"] != ("text" if resource_type == "note" else "file"):
+            raise HTTPException(status_code=404, detail="مورد پیوندشده پیدا نشد.")
+        check_node_access(conn, row, user)
+        title = row["title"]
+    else:
+        row = conn.execute("SELECT * FROM shared_boards WHERE id=? AND workspace_id=?", (resource_id, user["workspace_id"])).fetchone()
+        if not row: raise HTTPException(status_code=404, detail="برد پیوندشده پیدا نشد.")
+        require_board_access(conn, row, user)
+        title = row["title"]
+    return {"type": resource_type, "id": resource_id, "title": title}
+
+
+def _chat_attachment_public(row: sqlite3.Row) -> dict[str, Any]:
+    return {"id": row["id"], "name": row["original_name"], "contentType": row["content_type"],
+            "sizeBytes": row["size_bytes"], "url": f"/api/chat/attachments/{row['id']}"}
+
+
 @app.get("/api/chat")
-def get_chat(channel_type: str = "workspace",team_id: str | None = None,
-             before_id: str | None = None,user: dict[str, Any] = Depends(current_user)) -> dict[str,Any]:
-    if channel_type not in {"workspace","team"}: raise HTTPException(status_code=422,detail="کانال معتبر نیست.")
-    if channel_type=="team":
-        with db() as conn:
-            if not team_id or not conn.execute("SELECT 1 FROM teams WHERE id=? AND workspace_id=?",(team_id,user["workspace_id"])).fetchone():
-                raise HTTPException(status_code=404,detail="تیم پیدا نشد.")
-            if not _team_member(conn,team_id,user): raise HTTPException(status_code=403,detail="عضو این تیم نیستید.")
+def get_chat(channel_type: str = "workspace", team_id: str | None = None, q: str = "",
+             before_id: str | None = None, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     with db() as conn:
-        if channel_type=="workspace":
-            rows=conn.execute("""SELECT c.*,u.name AS user_name FROM chat_messages c JOIN users u ON u.id=c.user_id
-                                WHERE c.workspace_id=? AND c.channel_type='workspace' ORDER BY c.created_at DESC LIMIT 100""",(user["workspace_id"],)).fetchall()
-        else:
-            rows=conn.execute("""SELECT c.*,u.name AS user_name FROM chat_messages c JOIN users u ON u.id=c.user_id
-                                WHERE c.workspace_id=? AND c.channel_type='team' AND c.team_id=? ORDER BY c.created_at DESC LIMIT 100""",(user["workspace_id"],team_id)).fetchall()
-        return {"items":[{"id":r["id"],"body":r["body"],"userId":r["user_id"],"userName":r["user_name"],"createdAt":r["created_at"]} for r in reversed(rows)]}
+        _chat_channel_access(conn, user, channel_type, team_id)
+        query = """SELECT c.*,u.name AS user_name,u.avatar_key,u.avatar_updated_at,
+                    ru.name AS reply_user_name,rc.body AS reply_body
+                   FROM chat_messages c JOIN users u ON u.id=c.user_id
+                   LEFT JOIN chat_messages rc ON rc.id=c.reply_to_id
+                   LEFT JOIN users ru ON ru.id=rc.user_id
+                   WHERE c.workspace_id=? AND c.channel_type=?"""
+        args: list[Any] = [user["workspace_id"], channel_type]
+        if channel_type == "team": query += " AND c.team_id=?"; args.append(team_id)
+        if q.strip():
+            needle = f"%{q.strip()[:80]}%"
+            query += " AND c.deleted_at IS NULL AND (c.body LIKE ? OR u.name LIKE ?)"
+            args.extend([needle, needle])
+        if before_id:
+            before = conn.execute("SELECT created_at FROM chat_messages WHERE id=? AND workspace_id=?", (before_id,user["workspace_id"])).fetchone()
+            if before: query += " AND c.created_at<?"; args.append(before["created_at"])
+        query += " ORDER BY c.created_at DESC LIMIT 100"
+        rows = conn.execute(query, args).fetchall()
+        results = []
+        for r in reversed(rows):
+            attachment = conn.execute("SELECT * FROM chat_attachments WHERE message_id=? ORDER BY created_at LIMIT 1", (r["id"],)).fetchone()
+            mentions = [dict(x) for x in conn.execute("SELECT m.user_id AS id,u.name FROM chat_message_mentions m JOIN users u ON u.id=m.user_id WHERE m.message_id=?", (r["id"],)).fetchall()]
+            resource = None
+            if r["resource_type"] and r["resource_id"]:
+                # Titles are re-resolved under the current viewer's access rights.
+                try: resource = _chat_resource(conn, user, r["resource_type"], r["resource_id"])
+                except HTTPException: resource = {"type": r["resource_type"], "id": r["resource_id"], "title": "مورد دیگر در دسترس نیست"}
+            results.append({"id": r["id"], "body": "این پیام حذف شده است." if r["deleted_at"] else r["body"],
+                "userId": r["user_id"], "userName": r["user_name"], "avatarUrl": f"/api/users/{r['user_id']}/avatar?v={r['avatar_updated_at'] or ''}" if r["avatar_key"] else None,
+                "createdAt": r["created_at"], "editedAt": r["edited_at"], "deleted": bool(r["deleted_at"]),
+                "replyTo": {"userName": r["reply_user_name"], "body": r["reply_body"]} if r["reply_to_id"] else None,
+                "attachment": _chat_attachment_public(attachment) if attachment and not r["deleted_at"] else None,
+                "resource": resource, "mentions": mentions})
+        return {"items": results}
+
+
+@app.post("/api/chat/uploads")
+async def upload_chat_attachment(request: Request, channel_type: str = "workspace", team_id: str | None = None,
+                                 user: dict[str, Any] = Depends(require_permission("chat.send"))) -> dict[str, Any]:
+    with db() as conn: _chat_channel_access(conn, user, channel_type, team_id)
+    raw_name = unquote(request.headers.get("x-file-name", "attachment.bin"))
+    safe_name = Path(raw_name.replace("\\", "/")).name.strip() or "attachment.bin"
+    ext = Path(safe_name).suffix.lower()
+    if ext not in CHAT_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=415, detail="نوع فایل برای گفتگوی تیمی پشتیبانی نمی‌شود.")
+    if ext == ".svg": raise HTTPException(status_code=415, detail="فایل SVG برای ارسال مستقیم مجاز نیست.")
+    # Never trust the browser-supplied MIME type for inline rendering. Infer it
+    # from the allow-listed extension so an uploaded HTML/SVG payload cannot
+    # ask the browser to render as an active document.
+    content_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    if ext == ".md": content_type = "text/markdown"
+    if ext in {".m4a", ".oga"} and content_type == "application/octet-stream": content_type = "audio/mp4" if ext == ".m4a" else "audio/ogg"
+    attachment_id = new_id(); folder = CHAT_DIR / user["workspace_id"]; folder.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{attachment_id}{ext}"; path = folder / stored_name; total = 0
+    try:
+        with path.open("wb") as handle:
+            async for chunk in request.stream():
+                if not chunk: continue
+                total += len(chunk)
+                if total > MAX_CHAT_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="حداکثر حجم هر پیوست گفتگو ۲۵ مگابایت است.")
+                handle.write(chunk)
+        if not total: raise HTTPException(status_code=400, detail="فایل خالی است.")
+        stamp = now_iso()
+        with db() as conn:
+            # Expire abandoned pre-uploads after one day.
+            stale = conn.execute("SELECT id,workspace_id,stored_name FROM chat_attachments WHERE message_id IS NULL AND created_at<?", ((datetime.now(timezone.utc)-timedelta(days=1)).isoformat(),)).fetchall()
+            for old in stale:
+                (CHAT_DIR / old["workspace_id"] / old["stored_name"]).unlink(missing_ok=True)
+                conn.execute("DELETE FROM chat_attachments WHERE id=?", (old["id"],))
+            conn.execute("INSERT INTO chat_attachments(id,workspace_id,uploaded_by,channel_type,team_id,message_id,original_name,stored_name,content_type,size_bytes,created_at) VALUES(?,?,?,?,?,NULL,?,?,?,?,?)",
+                (attachment_id,user["workspace_id"],user["user_id"],channel_type,team_id if channel_type=="team" else None,safe_name,stored_name,content_type,total,stamp))
+        return {"id": attachment_id, "name": safe_name, "contentType": content_type, "sizeBytes": total,
+                "url": f"/api/chat/attachments/{attachment_id}"}
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+
+@app.get("/api/chat/attachments/{attachment_id}")
+def download_chat_attachment(attachment_id: str, download: bool = False,
+                             user: dict[str, Any] = Depends(current_user)) -> FileResponse:
+    with db() as conn:
+        row = conn.execute("SELECT a.*,m.channel_type AS message_channel,m.team_id AS message_team,m.deleted_at FROM chat_attachments a LEFT JOIN chat_messages m ON m.id=a.message_id WHERE a.id=? AND a.workspace_id=?", (attachment_id,user["workspace_id"])).fetchone()
+        if not row or not row["message_id"] or row["deleted_at"]: raise HTTPException(status_code=404, detail="پیوست گفتگو پیدا نشد.")
+        channel_type = row["message_channel"] or row["channel_type"]
+        team_id = row["message_team"] if row["message_channel"] else row["team_id"]
+        _chat_channel_access(conn,user,channel_type,team_id)
+        path = CHAT_DIR / user["workspace_id"] / row["stored_name"]
+        if not path.is_file(): raise HTTPException(status_code=404,detail="فایل پیوست در دسترس نیست.")
+        safe_inline = row["content_type"].startswith(("image/", "audio/", "video/"))
+        disposition = "attachment" if download or not safe_inline else "inline"
+        return FileResponse(path, media_type=row["content_type"], filename=row["original_name"], content_disposition_type=disposition)
+
+
+@app.get("/api/chat/resources")
+def search_chat_resources(q: str = "", user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    needle = f"%{q.strip()[:80]}%"
+    with db() as conn:
+        items: list[dict[str, Any]] = []
+        for r in conn.execute("SELECT id,title FROM tasks WHERE workspace_id=? AND title LIKE ? ORDER BY updated_at DESC LIMIT 30", (user["workspace_id"],needle)):
+            items.append({"type":"task","id":r["id"],"title":r["title"]})
+        for r in conn.execute("SELECT id,name AS title FROM projects WHERE workspace_id=? AND name LIKE ? ORDER BY updated_at DESC LIMIT 20", (user["workspace_id"],needle)):
+            items.append({"type":"project","id":r["id"],"title":r["title"]})
+        for r in conn.execute("SELECT * FROM shared_nodes WHERE workspace_id=? AND node_type IN ('text','file') AND title LIKE ? ORDER BY updated_at DESC LIMIT 40", (user["workspace_id"],needle)):
+            try:
+                check_node_access(conn,r,user)
+                items.append({"type":"note" if r["node_type"]=="text" else "file","id":r["id"],"title":r["title"]})
+            except HTTPException: pass
+        for r in conn.execute("SELECT * FROM shared_boards WHERE workspace_id=? AND title LIKE ? ORDER BY updated_at DESC LIMIT 20", (user["workspace_id"],needle)):
+            try:
+                require_board_access(conn,r,user)
+                items.append({"type":"board","id":r["id"],"title":r["title"]})
+            except HTTPException: pass
+        return {"items":items[:80]}
+
+
+def _validate_chat_reply(conn: sqlite3.Connection, user: dict[str, Any], channel_type: str, team_id: str | None, reply_to_id: str | None) -> None:
+    if not reply_to_id: return
+    row = conn.execute("SELECT channel_type,team_id FROM chat_messages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", (reply_to_id,user["workspace_id"])).fetchone()
+    if not row or row["channel_type"] != channel_type or (channel_type == "team" and row["team_id"] != team_id):
+        raise HTTPException(status_code=422, detail="پیام مبنا برای پاسخ معتبر نیست.")
 
 
 @app.post("/api/chat")
-def post_chat(payload: ChatMessageInput,user: dict[str, Any] = Depends(current_user)) -> dict[str,Any]:
-    if payload.channel_type not in {"workspace","team"}: raise HTTPException(status_code=422,detail="کانال معتبر نیست.")
+def post_chat(payload: ChatMessageInput, user: dict[str, Any] = Depends(require_permission("chat.send"))) -> dict[str, Any]:
+    body = payload.body.strip()
+    if len(body) > 10000: raise HTTPException(status_code=422,detail="متن پیام بیش از حد طولانی است.")
     with db() as conn:
-        if payload.channel_type=="team":
-            if not payload.team_id or not conn.execute("SELECT 1 FROM teams WHERE id=? AND workspace_id=?",(payload.team_id,user["workspace_id"])).fetchone():
-                raise HTTPException(status_code=404,detail="تیم پیدا نشد.")
-            if not _team_member(conn,payload.team_id,user): raise HTTPException(status_code=403,detail="عضو این تیم نیستید.")
+        _chat_channel_access(conn,user,payload.channel_type,payload.team_id)
+        _validate_chat_reply(conn,user,payload.channel_type,payload.team_id,payload.reply_to_id)
+        attachment = None
+        if payload.attachment_id:
+            attachment = conn.execute("SELECT * FROM chat_attachments WHERE id=? AND workspace_id=? AND uploaded_by=? AND message_id IS NULL AND channel_type=? AND COALESCE(team_id,'')=COALESCE(?,'')",
+                (payload.attachment_id,user["workspace_id"],user["user_id"],payload.channel_type,payload.team_id)).fetchone()
+            if not attachment: raise HTTPException(status_code=404,detail="پیوست آماده ارسال پیدا نشد.")
+        resource = _chat_resource(conn,user,payload.resource_type,payload.resource_id)
+        if not body and not attachment and not resource: raise HTTPException(status_code=422,detail="پیام باید متن، فایل یا پیوند داشته باشد.")
+        mentions = list(dict.fromkeys(x for x in payload.mentions if x and x != user["user_id"]))
+        if len(mentions) > 50: raise HTTPException(status_code=422,detail="تعداد اشاره‌ها بیش از حد مجاز است.")
+        valid_mentions = []
+        for target_id in mentions:
+            membership = conn.execute("SELECT role FROM memberships WHERE workspace_id=? AND user_id=?", (user["workspace_id"],target_id)).fetchone()
+            if not membership: continue
+            if payload.channel_type == "team" and not _team_member(conn, payload.team_id, {"user_id": target_id, "role": membership["role"]}):
+                continue
+            valid_mentions.append(target_id)
         msg_id,stamp=new_id(),now_iso()
-        conn.execute("INSERT INTO chat_messages(id,workspace_id,channel_type,team_id,user_id,body,created_at) VALUES(?,?,?,?,?,?,?)",
-                     (msg_id,user["workspace_id"],payload.channel_type,payload.team_id if payload.channel_type=="team" else None,user["user_id"],payload.body.strip(),stamp))
-        log_activity(conn,user["workspace_id"],user["user_id"],"chat",msg_id,"chat.message", "پیام تازه در گفت‌وگوی تیمی ثبت شد")
+        conn.execute("INSERT INTO chat_messages(id,workspace_id,channel_type,team_id,user_id,body,created_at,reply_to_id,resource_type,resource_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (msg_id,user["workspace_id"],payload.channel_type,payload.team_id if payload.channel_type=="team" else None,user["user_id"],body,stamp,payload.reply_to_id,resource["type"] if resource else None,resource["id"] if resource else None))
+        if attachment: conn.execute("UPDATE chat_attachments SET message_id=? WHERE id=?",(msg_id,attachment["id"]))
+        for target_id in valid_mentions:
+            conn.execute("INSERT OR IGNORE INTO chat_message_mentions(message_id,user_id) VALUES(?,?)",(msg_id,target_id))
+            create_notification(conn,user["workspace_id"],target_id,user["user_id"],"mention","در یک پیام از شما نام برده شد",body[:240],"chat",msg_id)
+        log_activity(conn,user["workspace_id"],user["user_id"],"chat",msg_id,"chat.message","پیام تازه‌ای در گفتگوی تیمی ثبت شد")
         return {"id":msg_id,"createdAt":stamp}
 
 
-@app.post("/api/presence")
-def update_presence(payload: PresenceInput,user: dict[str, Any] = Depends(current_user)) -> dict[str,bool]:
-    stamp=now_iso()
+@app.patch("/api/chat/{message_id}")
+def edit_chat_message(message_id: str,payload: ChatMessageEditInput,user: dict[str,Any] = Depends(current_user)) -> dict[str,bool]:
     with db() as conn:
-        conn.execute("INSERT INTO workspace_presence(workspace_id,user_id,page,last_seen) VALUES(?,?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET page=excluded.page,last_seen=excluded.last_seen",
-                     (user["workspace_id"],user["user_id"],payload.page,stamp))
+        row=conn.execute("SELECT * FROM chat_messages WHERE id=? AND workspace_id=? AND deleted_at IS NULL",(message_id,user["workspace_id"])).fetchone()
+        if not row: raise HTTPException(status_code=404,detail="پیام پیدا نشد.")
+        _chat_channel_access(conn,user,row["channel_type"],row["team_id"])
+        if row["user_id"] != user["user_id"] and not has_permission(user,"chat.moderate"):
+            raise HTTPException(status_code=403,detail="فقط نویسنده یا ناظر گفتگو می‌تواند پیام را ویرایش کند.")
+        body = payload.body.strip()
+        if not body: raise HTTPException(status_code=422, detail="متن پیام نمی‌تواند خالی باشد.")
+        previous = {r["user_id"] for r in conn.execute("SELECT user_id FROM chat_message_mentions WHERE message_id=?", (message_id,)).fetchall()}
+        requested = list(dict.fromkeys(x for x in payload.mentions if x and x != user["user_id"]))
+        if len(requested) > 50: raise HTTPException(status_code=422, detail="تعداد اشاره‌ها بیش از حد مجاز است.")
+        valid = []
+        for target_id in requested:
+            membership = conn.execute("SELECT role FROM memberships WHERE workspace_id=? AND user_id=?", (user["workspace_id"], target_id)).fetchone()
+            if not membership: continue
+            if row["channel_type"] == "team" and not _team_member(conn, row["team_id"], {"user_id": target_id, "role": membership["role"]}): continue
+            valid.append(target_id)
+        conn.execute("DELETE FROM chat_message_mentions WHERE message_id=?", (message_id,))
+        for target_id in valid:
+            conn.execute("INSERT INTO chat_message_mentions(message_id,user_id) VALUES(?,?)", (message_id,target_id))
+            if target_id not in previous:
+                create_notification(conn,user["workspace_id"],target_id,user["user_id"],"mention","در یک پیام از شما نام برده شد",body[:240],"chat",message_id)
+        conn.execute("UPDATE chat_messages SET body=?,edited_at=? WHERE id=?",(body,now_iso(),message_id))
+        log_activity(conn,user["workspace_id"],user["user_id"],"chat",message_id,"chat.message.edited","یک پیام ویرایش شد")
+    return {"ok":True}
+
+
+@app.delete("/api/chat/{message_id}")
+def delete_chat_message(message_id: str,user: dict[str,Any] = Depends(current_user)) -> dict[str,bool]:
+    file_to_remove=[]
+    with db() as conn:
+        row=conn.execute("SELECT * FROM chat_messages WHERE id=? AND workspace_id=? AND deleted_at IS NULL",(message_id,user["workspace_id"])).fetchone()
+        if not row: raise HTTPException(status_code=404,detail="پیام پیدا نشد.")
+        _chat_channel_access(conn,user,row["channel_type"],row["team_id"])
+        if row["user_id"] != user["user_id"] and not has_permission(user,"chat.moderate"):
+            raise HTTPException(status_code=403,detail="فقط نویسنده یا ناظر گفتگو می‌تواند پیام را حذف کند.")
+        attachments=conn.execute("SELECT id,stored_name FROM chat_attachments WHERE message_id=?",(message_id,)).fetchall()
+        file_to_remove=[CHAT_DIR/user["workspace_id"]/a["stored_name"] for a in attachments]
+        conn.execute("DELETE FROM chat_attachments WHERE message_id=?",(message_id,))
+        conn.execute("UPDATE chat_messages SET body='',deleted_at=? WHERE id=?",(now_iso(),message_id))
+        conn.execute("DELETE FROM chat_message_mentions WHERE message_id=?",(message_id,))
+        log_activity(conn,user["workspace_id"],user["user_id"],"chat",message_id,"chat.message.deleted","یک پیام حذف شد")
+    for path in file_to_remove: path.unlink(missing_ok=True)
+    return {"ok":True}
+
+
+@app.post("/api/presence")
+def update_presence(payload: PresenceInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+    stamp = now_iso()
+    team_id = payload.team_id
+    with db() as conn:
+        if team_id and not conn.execute("SELECT 1 FROM team_members WHERE team_id=? AND user_id=?", (team_id,user["user_id"])).fetchone() and user["role"] not in ("owner","admin"):
+            raise HTTPException(status_code=403, detail="برای حضور در این تیم باید عضو آن باشید.")
+        if team_id and not conn.execute("SELECT 1 FROM teams WHERE id=? AND workspace_id=?", (team_id,user["workspace_id"])).fetchone():
+            raise HTTPException(status_code=404, detail="تیم پیدا نشد.")
+        conn.execute("""INSERT INTO workspace_presence(workspace_id,user_id,page,last_seen,active_team_id)
+            VALUES(?,?,?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET page=excluded.page,last_seen=excluded.last_seen,active_team_id=excluded.active_team_id""",
+            (user["workspace_id"],user["user_id"],payload.page,stamp,team_id))
         conn.execute("DELETE FROM workspace_presence WHERE workspace_id=? AND last_seen<?",
                      (user["workspace_id"],(datetime.now(timezone.utc)-timedelta(minutes=3)).isoformat()))
     return {"ok":True}
 
 
-@app.get("/api/presence")
-def get_presence(user: dict[str, Any] = Depends(current_user)) -> dict[str,Any]:
+@app.post("/api/presence/cursor")
+def update_cursor(payload: CursorInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+    stamp = now_iso()
+    palette = ["#C65C42", "#397C83", "#8B6BB1", "#B27A31", "#4F805F", "#B34C73", "#63799B"]
+    color = palette[int(hashlib.sha256(user["user_id"].encode()).hexdigest()[:8],16) % len(palette)]
+    team_id = payload.team_id
     with db() as conn:
-        rows=conn.execute("""SELECT p.user_id,u.name,p.page,p.last_seen FROM workspace_presence p JOIN users u ON u.id=p.user_id
-                             WHERE p.workspace_id=? AND p.last_seen>? ORDER BY u.name""",
-                          (user["workspace_id"],(datetime.now(timezone.utc)-timedelta(seconds=45)).isoformat())).fetchall()
-        return {"items":[dict(r) for r in rows]}
+        if team_id and not conn.execute("SELECT 1 FROM teams WHERE id=? AND workspace_id=?", (team_id,user["workspace_id"])).fetchone():
+            team_id = None
+        conn.execute("""INSERT INTO workspace_presence(workspace_id,user_id,page,last_seen,active_team_id,cursor_x_pct,cursor_y_pct,cursor_page,cursor_color)
+            VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET last_seen=excluded.last_seen,
+            active_team_id=excluded.active_team_id,cursor_x_pct=excluded.cursor_x_pct,cursor_y_pct=excluded.cursor_y_pct,
+            cursor_page=excluded.cursor_page,cursor_color=excluded.cursor_color""",
+            (user["workspace_id"],user["user_id"],payload.page,stamp,team_id,payload.x_pct,payload.y_pct,payload.page,color))
+    return {"ok":True}
+
+
+@app.get("/api/presence")
+def get_presence(team_id: str | None = None, user: dict[str, Any] = Depends(current_user)) -> dict[str,Any]:
+    cutoff = (datetime.now(timezone.utc)-timedelta(seconds=45)).isoformat()
+    with db() as conn:
+        if team_id:
+            rows = conn.execute("""SELECT p.user_id,u.name,u.avatar_key,u.avatar_updated_at,p.page,p.last_seen,p.active_team_id,
+                p.cursor_x_pct,p.cursor_y_pct,p.cursor_page,p.cursor_color,m.role,m.custom_role_id,cr.name AS role_name,cr.color AS role_color
+                FROM workspace_presence p JOIN users u ON u.id=p.user_id
+                JOIN team_members tm ON tm.user_id=u.id AND tm.team_id=?
+                JOIN memberships m ON m.user_id=u.id AND m.workspace_id=p.workspace_id
+                LEFT JOIN workspace_custom_roles cr ON cr.id=m.custom_role_id
+                WHERE p.workspace_id=? AND p.last_seen>? ORDER BY u.name""",(team_id,user["workspace_id"],cutoff)).fetchall()
+        else:
+            rows = conn.execute("""SELECT p.user_id,u.name,u.avatar_key,u.avatar_updated_at,p.page,p.last_seen,p.active_team_id,
+                p.cursor_x_pct,p.cursor_y_pct,p.cursor_page,p.cursor_color,m.role,m.custom_role_id,cr.name AS role_name,cr.color AS role_color
+                FROM workspace_presence p JOIN users u ON u.id=p.user_id
+                JOIN memberships m ON m.user_id=u.id AND m.workspace_id=p.workspace_id
+                LEFT JOIN workspace_custom_roles cr ON cr.id=m.custom_role_id
+                WHERE p.workspace_id=? AND p.last_seen>? ORDER BY u.name""",(user["workspace_id"],cutoff)).fetchall()
+        items=[]
+        for row in rows:
+            item=dict(row)
+            item["avatarUrl"] = f"/api/users/{row['user_id']}/avatar?v={row['avatar_updated_at'] or ''}" if row['avatar_key'] else None
+            item["roleName"] = row["role_name"] or {"owner":"مالک","admin":"مدیر","member":"عضو"}.get(row["role"],"عضو")
+            item["roleColor"] = row["role_color"]
+            items.append(item)
+        return {"items":items,"onlineCount":len(items)}
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
@@ -2011,13 +2715,17 @@ def index() -> FileResponse:
 # ---------------------------------------------------------------------------
 PERMISSION_KEYS = {
     "workspace.manage", "members.invite", "members.manage", "teams.manage",
-    "backups.manage", "permissions.manage", "shared.manage", "reports.view",
-    "tasks.delete", "projects.delete",
+    "backups.manage", "permissions.manage", "shared.manage", "reports.view", "chat.moderate",
+    "tasks.create", "tasks.update", "tasks.delete", "comments.create", "chat.send",
+    "boards.manage", "drive.manage", "projects.delete", "projects.create", "projects.update",
+    "recurring.manage", "templates.manage", "approvals.manage", "tasks.checklist",
+    "tasks.attachments", "tasks.dependencies", "tasks.time",
 }
 DEFAULT_ROLE_PERMISSIONS = {
     "owner": set(PERMISSION_KEYS),
     "admin": set(PERMISSION_KEYS) - {"permissions.manage"},
-    "member": {"reports.view"},
+    "member": {"reports.view", "tasks.create", "tasks.update", "comments.create", "chat.send",
+               "tasks.checklist", "tasks.attachments", "tasks.dependencies", "tasks.time"},
 }
 BACKUP_RETENTION = max(2, int(os.getenv("BOTTLENECK_BACKUP_RETENTION", "14")))
 BACKUP_INTERVAL_HOURS = max(1, int(os.getenv("BOTTLENECK_BACKUP_INTERVAL_HOURS", "24")))
@@ -2133,14 +2841,14 @@ def _build_backup(created_by: str | None = None, automatic: bool = False) -> dic
             raise RuntimeError("Database file is not present yet.")
         manifest = {
             "application": "BottleNeck", "version": APP_VERSION,
-            "createdAt": now_iso(), "includes": ["sqlite-database", "uploads", "shared-files"],
+            "createdAt": now_iso(), "includes": ["sqlite-database", "uploads", "shared-files", "chat-uploads"],
             "restore": "Stop BottleNeck, extract this archive, and restore the database and data folders as described in HANDBOOK.md.",
         }
         (tmp / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
             zf.write(db_copy, "data/bottleneck.sqlite3")
             zf.write(tmp / "manifest.json", "manifest.json")
-            for folder, arc_root in ((UPLOAD_DIR, "data/uploads"), (SHARED_DIR, "data/shared")):
+            for folder, arc_root in ((UPLOAD_DIR, "data/uploads"), (SHARED_DIR, "data/shared"), (CHAT_DIR, "data/chat_uploads")):
                 if folder.exists():
                     for file_path in folder.rglob("*"):
                         if file_path.is_file():
@@ -2151,7 +2859,8 @@ def _build_backup(created_by: str | None = None, automatic: bool = False) -> dic
                      (backup_id, filename, size, created_by, now_iso(), 1 if automatic else 0))
     # Retain the newest configured number of backups.
     with db() as conn:
-        old = conn.execute("SELECT id,filename FROM backup_catalog ORDER BY created_at DESC LIMIT -1 OFFSET ?", (BACKUP_RETENTION,)).fetchall()
+        retention = _server_setting_int("backup_retention", BACKUP_RETENTION, minimum=2, maximum=100)
+        old = conn.execute("SELECT id,filename FROM backup_catalog ORDER BY created_at DESC LIMIT -1 OFFSET ?", (retention,)).fetchall()
         for row in old:
             (BACKUP_DIR / row["filename"]).unlink(missing_ok=True)
             conn.execute("DELETE FROM backup_catalog WHERE id=?", (row["id"],))
@@ -2191,7 +2900,8 @@ async def _backup_scheduler() -> None:
             due = not latest
             if latest:
                 try:
-                    due = datetime.fromisoformat(latest["created_at"]) < datetime.now(timezone.utc) - timedelta(hours=BACKUP_INTERVAL_HOURS)
+                    interval_hours = _server_setting_int("backup_interval_hours", BACKUP_INTERVAL_HOURS, minimum=1, maximum=720)
+                    due = datetime.fromisoformat(latest["created_at"]) < datetime.now(timezone.utc) - timedelta(hours=interval_hours)
                 except ValueError:
                     due = True
             if due:
@@ -2273,8 +2983,7 @@ def switch_workspace(payload: WorkspaceSwitchInput, request: Request, user: dict
     return {"ok": True, "workspaceId": payload.workspace_id}
 
 
-@app.post("/api/invitations/{token}/accept")
-def accept_workspace_invitation(token: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def _accept_workspace_invitation(token: str, request: Request, user: dict[str, Any]) -> dict[str, Any]:
     with db() as conn:
         invite = conn.execute("SELECT * FROM invitations WHERE token_hash=? AND accepted_at IS NULL AND expires_at>?", (hash_token(token), now_iso())).fetchone()
         if not invite:
@@ -2295,6 +3004,172 @@ def accept_workspace_invitation(token: str, request: Request, user: dict[str, An
     return {"ok": True, "workspaceId": invite["workspace_id"]}
 
 
+@app.post("/api/invitations/accept")
+def accept_workspace_invitation_body(payload: LinkTokenInput, request: Request,
+                                    user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _accept_workspace_invitation(payload.token, request, user)
+
+
+@app.post("/api/invitations/{token}/accept")
+def accept_workspace_invitation(token: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _accept_workspace_invitation(token, request, user)
+
+
+@app.post("/api/workspace-join-codes")
+def create_workspace_join_code(payload: JoinCodeCreateInput, user: dict[str, Any] = Depends(require_permission("members.invite"))) -> dict[str, Any]:
+    role = payload.role if payload.role in {"admin","member"} else "member"
+    if role == "admin" and user["role"] != "owner":
+        raise HTTPException(status_code=403, detail="فقط مالک می‌تواند کد عضویت مدیر بسازد.")
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    code = "".join(secrets.choice(alphabet) for _ in range(8))
+    code_id = new_id(); stamp=now_iso(); expires=(datetime.now(timezone.utc)+timedelta(minutes=15)).replace(microsecond=0).isoformat()
+    with db() as conn:
+        conn.execute("INSERT INTO workspace_join_codes(id,workspace_id,role,token_hash,created_by,expires_at,max_uses,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                     (code_id,user["workspace_id"],role,hash_token(code),user["user_id"],expires,payload.max_uses,stamp))
+        log_activity(conn,user["workspace_id"],user["user_id"],"join_code",code_id,"created","کد عضویت ۱۵ دقیقه‌ای ساخته شد.")
+    return {"id":code_id,"code":code,"role":role,"expiresAt":expires,"maxUses":payload.max_uses}
+
+
+@app.post("/api/workspace-join-codes/accept")
+def accept_workspace_join_code(payload: JoinCodeAcceptInput, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    code = re.sub(r"[^A-Za-z0-9]", "", payload.code).upper()
+    if len(code) != 8:
+        raise HTTPException(status_code=400, detail="کد عضویت معتبر نیست.")
+    stamp = now_iso()
+    error_status: int | None = None
+    error_message = ""
+    workspace_id = ""
+    already_member = False
+    with db() as conn:
+        attempt = conn.execute("SELECT * FROM join_code_attempts WHERE user_id=?", (user["user_id"],)).fetchone()
+        now_dt = datetime.now(timezone.utc)
+        if attempt:
+            try:
+                window = datetime.fromisoformat(attempt["window_started"])
+            except ValueError:
+                window = now_dt - timedelta(minutes=10)
+            if now_dt - window > timedelta(minutes=10):
+                conn.execute("UPDATE join_code_attempts SET window_started=?,attempts=0 WHERE user_id=?", (stamp, user["user_id"]))
+            elif attempt["attempts"] >= 12:
+                error_status, error_message = 429, "تلاش‌های زیادی انجام شده است؛ ۱۰ دقیقه دیگر امتحان کنید."
+        else:
+            conn.execute("INSERT INTO join_code_attempts(user_id,window_started,attempts) VALUES(?,?,0)", (user["user_id"], stamp))
+        if error_status is None:
+            row = conn.execute("SELECT * FROM workspace_join_codes WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?", (hash_token(code), stamp)).fetchone()
+            if not row or row["use_count"] >= row["max_uses"]:
+                conn.execute("UPDATE join_code_attempts SET attempts=attempts+1 WHERE user_id=?", (user["user_id"],))
+                error_status, error_message = 404, "کد معتبر نیست یا زمان استفاده از آن به پایان رسیده است."
+            else:
+                workspace_id = row["workspace_id"]
+                existing = conn.execute("SELECT 1 FROM memberships WHERE workspace_id=? AND user_id=?", (workspace_id, user["user_id"])).fetchone()
+                already_member = bool(existing)
+                changed = conn.execute("UPDATE workspace_join_codes SET use_count=use_count+1 WHERE id=? AND revoked_at IS NULL AND expires_at>? AND use_count<max_uses", (row["id"], stamp))
+                if changed.rowcount != 1:
+                    error_status, error_message = 409, "ظرفیت این کد در همین لحظه تکمیل شد؛ کد تازه بگیرید."
+                else:
+                    if not existing:
+                        conn.execute("INSERT INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)", (new_id(), workspace_id, user["user_id"], row["role"], stamp))
+                        team = conn.execute("SELECT id FROM teams WHERE workspace_id=? ORDER BY created_at LIMIT 1", (workspace_id,)).fetchone()
+                        if team:
+                            conn.execute("INSERT OR IGNORE INTO team_members(team_id,user_id,created_at) VALUES(?,?,?)", (team["id"], user["user_id"], stamp))
+                        log_activity(conn, workspace_id, user["user_id"], "member", user["user_id"], "joined", "با کد عضویت ۱۵ دقیقه‌ای به فضای کار پیوست.")
+                    token = request.cookies.get(COOKIE_NAME)
+                    if token:
+                        conn.execute("UPDATE sessions SET workspace_id=? WHERE token_hash=? AND user_id=?", (workspace_id, hash_token(token), user["user_id"]))
+                    conn.execute("UPDATE join_code_attempts SET attempts=0,window_started=? WHERE user_id=?", (stamp, user["user_id"]))
+    if error_status is not None:
+        raise HTTPException(status_code=error_status, detail=error_message)
+    return {"ok": True, "workspaceId": workspace_id, "alreadyMember": already_member}
+
+
+@app.get("/api/workspace-join-codes")
+def list_workspace_join_codes(user: dict[str, Any] = Depends(require_permission("members.manage"))) -> dict[str, Any]:
+    with db() as conn:
+        rows=conn.execute("SELECT id,role,expires_at,max_uses,use_count,created_at,revoked_at FROM workspace_join_codes WHERE workspace_id=? AND expires_at>? ORDER BY created_at DESC LIMIT 40",(user["workspace_id"],now_iso())).fetchall()
+    return {"items":[dict(r) for r in rows]}
+
+
+@app.delete("/api/workspace-join-codes/{code_id}")
+def revoke_workspace_join_code(code_id: str, user: dict[str, Any] = Depends(require_permission("members.manage"))) -> dict[str,bool]:
+    with db() as conn:
+        cur=conn.execute("UPDATE workspace_join_codes SET revoked_at=? WHERE id=? AND workspace_id=? AND revoked_at IS NULL",(now_iso(),code_id,user["workspace_id"]))
+        if not cur.rowcount: raise HTTPException(status_code=404,detail="کد عضویت پیدا نشد.")
+    return {"ok":True}
+
+
+@app.get("/api/custom-roles")
+def list_custom_roles(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    with db() as conn:
+        rows=conn.execute("SELECT id,name,color,base_role,created_at FROM workspace_custom_roles WHERE workspace_id=? ORDER BY name",(user["workspace_id"],)).fetchall()
+        result=[]
+        for row in rows:
+            perms=conn.execute("SELECT permission_key,allowed FROM workspace_custom_role_permissions WHERE role_id=? ORDER BY permission_key",(row["id"],)).fetchall()
+            result.append({**dict(row),"permissions":[dict(p) for p in perms]})
+    return {"items":result,"keys":sorted(PERMISSION_KEYS)}
+
+
+@app.post("/api/custom-roles")
+def create_custom_role(payload: CustomRoleCreateInput, user: dict[str, Any] = Depends(require_permission("permissions.manage"))) -> dict[str, Any]:
+    if payload.base_role not in {"admin","member"}: raise HTTPException(status_code=422,detail="نقش پایه معتبر نیست.")
+    invalid=set(payload.permissions)-PERMISSION_KEYS
+    if invalid: raise HTTPException(status_code=422,detail="یکی از مجوزها معتبر نیست.")
+    role_id=new_id(); stamp=now_iso()
+    with db() as conn:
+        try:
+            conn.execute("INSERT INTO workspace_custom_roles(id,workspace_id,name,color,base_role,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                         (role_id,user["workspace_id"],payload.name.strip(),payload.color,payload.base_role,user["user_id"],stamp))
+        except sqlite3.IntegrityError: raise HTTPException(status_code=409,detail="نقشی با این نام از قبل وجود دارد.")
+        for permission in PERMISSION_KEYS:
+            conn.execute("INSERT INTO workspace_custom_role_permissions(workspace_id,role_id,permission_key,allowed,updated_by,updated_at) VALUES(?,?,?,?,?,?)",
+                         (user["workspace_id"],role_id,permission,1 if permission in payload.permissions else 0,user["user_id"],stamp))
+        log_activity(conn,user["workspace_id"],user["user_id"],"role",role_id,"created",f"نقش سفارشی «{payload.name.strip()}» ساخته شد.")
+    return {"id":role_id,"name":payload.name.strip(),"color":payload.color,"base_role":payload.base_role}
+
+
+@app.put("/api/custom-roles/{role_id}/permissions")
+def update_custom_role_permissions(role_id: str, payload: CustomRolePermissionsInput, user: dict[str, Any] = Depends(require_permission("permissions.manage"))) -> dict[str,bool]:
+    invalid=set(payload.permissions)-PERMISSION_KEYS
+    if invalid: raise HTTPException(status_code=422,detail="یکی از مجوزها معتبر نیست.")
+    stamp=now_iso()
+    with db() as conn:
+        role=conn.execute("SELECT id FROM workspace_custom_roles WHERE id=? AND workspace_id=?",(role_id,user["workspace_id"])).fetchone()
+        if not role: raise HTTPException(status_code=404,detail="نقش پیدا نشد.")
+        for permission in PERMISSION_KEYS:
+            conn.execute("INSERT INTO workspace_custom_role_permissions(workspace_id,role_id,permission_key,allowed,updated_by,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(role_id,permission_key) DO UPDATE SET allowed=excluded.allowed,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                         (user["workspace_id"],role_id,permission,1 if permission in payload.permissions else 0,user["user_id"],stamp))
+    return {"ok":True}
+
+
+@app.delete("/api/custom-roles/{role_id}")
+def delete_custom_role(role_id: str, user: dict[str, Any] = Depends(require_permission("permissions.manage"))) -> dict[str,bool]:
+    with db() as conn:
+        role=conn.execute("SELECT name FROM workspace_custom_roles WHERE id=? AND workspace_id=?",(role_id,user["workspace_id"])).fetchone()
+        if not role: raise HTTPException(status_code=404,detail="نقش پیدا نشد.")
+        conn.execute("UPDATE memberships SET custom_role_id=NULL WHERE custom_role_id=? AND workspace_id=?",(role_id,user["workspace_id"]))
+        conn.execute("DELETE FROM workspace_custom_roles WHERE id=?",(role_id,))
+        log_activity(conn,user["workspace_id"],user["user_id"],"role",role_id,"deleted",f"نقش «{role['name']}» حذف شد و اعضا به نقش پایه برگشتند.")
+    return {"ok":True}
+
+
+@app.put("/api/members/{member_id}/role")
+def assign_member_role(member_id: str, payload: MemberRoleInput, user: dict[str, Any] = Depends(require_permission("members.manage"))) -> dict[str,bool]:
+    if member_id == user["user_id"]: raise HTTPException(status_code=400,detail="نقش مالک فعلی قابل تغییر نیست.")
+    with db() as conn:
+        member=conn.execute("SELECT role FROM memberships WHERE workspace_id=? AND user_id=?",(user["workspace_id"],member_id)).fetchone()
+        if not member: raise HTTPException(status_code=404,detail="عضو پیدا نشد.")
+        if member["role"] == "owner": raise HTTPException(status_code=403,detail="نقش مالک قابل تغییر نیست.")
+        if payload.custom_role_id:
+            custom=conn.execute("SELECT base_role FROM workspace_custom_roles WHERE id=? AND workspace_id=?",(payload.custom_role_id,user["workspace_id"])).fetchone()
+            if not custom: raise HTTPException(status_code=404,detail="نقش سفارشی پیدا نشد.")
+            conn.execute("UPDATE memberships SET role=?,custom_role_id=? WHERE workspace_id=? AND user_id=?",(custom["base_role"],payload.custom_role_id,user["workspace_id"],member_id))
+        else:
+            if payload.role not in {"admin","member"}: raise HTTPException(status_code=422,detail="نقش پایه معتبر نیست.")
+            if payload.role == "admin" and user["role"] != "owner": raise HTTPException(status_code=403,detail="فقط مالک فضای کاری می‌تواند نقش پایه مدیر را واگذار کند.")
+            conn.execute("UPDATE memberships SET role=?,custom_role_id=NULL WHERE workspace_id=? AND user_id=?",(payload.role,user["workspace_id"],member_id))
+        log_activity(conn,user["workspace_id"],user["user_id"],"member",member_id,"role_changed","نقش یکی از اعضا تغییر کرد.")
+    return {"ok":True}
+
+
 @app.get("/api/permissions")
 def get_role_permissions(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     with db() as conn:
@@ -2304,8 +3179,8 @@ def get_role_permissions(user: dict[str, Any] = Depends(current_user)) -> dict[s
 
 @app.put("/api/permissions")
 def set_role_permissions(payload: RolePermissionsInput, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
-    if user["role"] != "owner":
-        raise HTTPException(status_code=403, detail="فقط مالک فضای کاری می‌تواند مجوزهای نقش‌ها را تغییر دهد.")
+    if not has_permission(user, "permissions.manage"):
+        raise HTTPException(status_code=403, detail="مجوز مدیریت نقش‌ها را ندارید.")
     stamp = now_iso()
     with db() as conn:
         for item in payload.items:
@@ -2318,16 +3193,41 @@ def set_role_permissions(payload: RolePermissionsInput, user: dict[str, Any] = D
     return {"ok": True}
 
 
-def is_instance_admin(user_id: str) -> bool:
+SERVER_ROLE_PERMISSIONS = {
+    "owner": {"overview", "users.view", "workspaces.view", "logs.view", "backups.view", "backups.create", "backups.download", "exports", "imports", "settings.manage", "admins.manage", "restore"},
+    "operator": {"overview", "users.view", "workspaces.view", "logs.view", "backups.view", "backups.create", "exports", "imports"},
+    "auditor": {"overview", "users.view", "workspaces.view", "logs.view", "backups.view", "exports"},
+}
+
+
+def server_admin_record(user_id: str) -> dict[str, Any] | None:
     with db() as conn:
-        first = conn.execute("SELECT created_by FROM workspaces ORDER BY rowid LIMIT 1").fetchone()
-    return bool(first and first["created_by"] == user_id)
+        row = conn.execute("SELECT user_id,role,enabled,created_at FROM server_admins WHERE user_id=? AND enabled=1", (user_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def is_instance_admin(user_id: str) -> bool:
+    return server_admin_record(user_id) is not None
+
+
+def require_server_permission(permission: str):
+    def dependency(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+        admin = server_admin_record(user["user_id"])
+        if not admin or permission not in SERVER_ROLE_PERMISSIONS.get(admin["role"], set()):
+            raise HTTPException(status_code=403, detail="این عملیات به دسترسی مدیریت سرور نیاز دارد.")
+        user["server_admin_role"] = admin["role"]
+        return user
+    return dependency
 
 
 def require_instance_admin(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    if not is_instance_admin(user["user_id"]):
-        raise HTTPException(status_code=403, detail="فقط مدیر اصلی نصب BottleNeck به نسخه‌های پشتیبان کل سامانه دسترسی دارد.")
-    return user
+    return require_server_permission("backups.view")(user)
+
+
+def server_audit(conn: sqlite3.Connection, actor_id: str | None, action: str, target: str = "", details: dict[str, Any] | None = None) -> None:
+    conn.execute("INSERT INTO server_audit_logs(actor_user_id,action,target,details_json,created_at) VALUES(?,?,?,?,?)",
+                 (actor_id, action, target[:240], json.dumps(details or {}, ensure_ascii=False), now_iso()))
+    _server_logger.info("actor=%s action=%s target=%s details=%s", actor_id or "cli", action, target, json.dumps(details or {}, ensure_ascii=False))
 
 
 @app.get("/api/security")
@@ -2461,7 +3361,7 @@ def list_backups(user: dict[str, Any] = Depends(require_instance_admin)) -> dict
 
 
 @app.post("/api/backups")
-def create_manual_backup(user: dict[str, Any] = Depends(require_instance_admin)) -> dict[str, Any]:
+def create_manual_backup(user: dict[str, Any] = Depends(require_server_permission("backups.create"))) -> dict[str, Any]:
     try:
         backup = _build_backup(user["user_id"], False)
     except Exception as exc:
@@ -2473,7 +3373,7 @@ def create_manual_backup(user: dict[str, Any] = Depends(require_instance_admin))
 
 
 @app.get("/api/backups/{backup_id}/download")
-def download_backup(backup_id: str, user: dict[str, Any] = Depends(require_instance_admin)) -> FileResponse:
+def download_backup(backup_id: str, user: dict[str, Any] = Depends(require_server_permission("backups.download"))) -> FileResponse:
     with db() as conn:
         row = conn.execute("SELECT * FROM backup_catalog WHERE id=?", (backup_id,)).fetchone()
     if not row:
@@ -2600,3 +3500,509 @@ async def websocket_events(websocket: WebSocket) -> None:
 # Uvicorn HTTPS is configured by the launch scripts using BOTTLENECK_SSL_CERTFILE/KEYFILE.
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+def _server_setting(key: str, default: str) -> str:
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT setting_value FROM server_settings WHERE setting_key=?", (key,)).fetchone()
+        return row["setting_value"] if row else default
+    except sqlite3.Error:
+        return default
+
+
+def _server_setting_int(key: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(_server_setting(key, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+# ---------------------------------------------------------------------------
+# v0.9.0 — dedicated server administration, diagnostics and data portability.
+# Server administration is intentionally separate from workspace settings.
+# ---------------------------------------------------------------------------
+
+SERVER_EXPORT_TABLES = [
+    "teams", "projects", "workspace_settings", "workspace_status_labels",
+    "workspace_role_permissions", "workspace_custom_roles", "workspace_custom_role_permissions",
+    "tasks", "task_assignees", "task_comments", "task_checklists", "task_attachments",
+    "time_entries", "task_dependencies", "recurring_rules", "task_templates", "task_approvals",
+    "team_members", "shared_boards", "shared_board_items", "shared_nodes", "shared_node_role_acl",
+    "chat_messages", "chat_attachments", "chat_message_mentions", "notifications", "activity_logs",
+    "workspace_events", "workspace_presence", "notification_preferences"
+]
+
+
+def _folder_bytes(path: Path) -> int:
+    total = 0
+    if path.exists():
+        for item in path.rglob("*"):
+            try:
+                if item.is_file(): total += item.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _server_overview() -> dict[str, Any]:
+    with db() as conn:
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        workspaces = conn.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0]
+        sessions = conn.execute("SELECT COUNT(*) FROM sessions WHERE expires_at>?", (now_iso(),)).fetchone()[0]
+        backups = conn.execute("SELECT COUNT(*) FROM backup_catalog").fetchone()[0]
+        admin_count = conn.execute("SELECT COUNT(*) FROM server_admins WHERE enabled=1").fetchone()[0]
+        recent = conn.execute("SELECT action,target,created_at FROM server_audit_logs ORDER BY id DESC LIMIT 5").fetchall()
+    db_size = DB_PATH.stat().st_size if DB_PATH.exists() else 0
+    data_size = _folder_bytes(DB_PATH.parent)
+    free = shutil.disk_usage(DB_PATH.parent).free if DB_PATH.parent.exists() else 0
+    return {
+        "version": APP_VERSION, "status": "healthy" if integrity == "ok" else "warning",
+        "databaseIntegrity": integrity, "databasePath": str(DB_PATH.relative_to(BASE_DIR)) if DB_PATH.is_relative_to(BASE_DIR) else str(DB_PATH),
+        "databaseBytes": db_size, "dataBytes": data_size, "freeBytes": free,
+        "users": users, "workspaces": workspaces, "activeSessions": sessions,
+        "backups": backups, "serverAdmins": admin_count,
+        "uptimeSeconds": max(0, int((datetime.now(timezone.utc)-PROCESS_STARTED_AT).total_seconds())),
+        "host": _server_setting("bind_host", os.getenv("BOTTLENECK_HOST") or "0.0.0.0"),
+        "port": int(_server_setting("bind_port", os.getenv("BOTTLENECK_PORT") or "1939")),
+        "serverLogBytes": SERVER_LOG_PATH.stat().st_size if SERVER_LOG_PATH.exists() else 0,
+        "backupIntervalHours": _server_setting_int("backup_interval_hours", BACKUP_INTERVAL_HOURS, 1, 720),
+        "backupRetention": _server_setting_int("backup_retention", BACKUP_RETENTION, 2, 100),
+        "diskTotalBytes": shutil.disk_usage(DB_PATH.parent).total if DB_PATH.parent.exists() else 0,
+        "diskUsedBytes": shutil.disk_usage(DB_PATH.parent).used if DB_PATH.parent.exists() else 0,
+        "recent": [dict(x) for x in recent],
+    }
+
+
+def _workspace_export_rows(conn: sqlite3.Connection, workspace_id: str) -> dict[str, list[dict[str, Any]]]:
+    export: dict[str, list[dict[str, Any]]] = {}
+    workspace = conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="فضای کاری پیدا نشد.")
+    export["workspaces"] = [dict(workspace)]
+    export["memberships"] = [dict(r) for r in conn.execute("SELECT * FROM memberships WHERE workspace_id=?", (workspace_id,)).fetchall()]
+    for table in SERVER_EXPORT_TABLES:
+        columns = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "workspace_id" in columns:
+            if table == "shared_nodes":
+                rows = conn.execute(f"SELECT * FROM {table} WHERE workspace_id=? ORDER BY created_at ASC", (workspace_id,)).fetchall()
+            else:
+                rows = conn.execute(f"SELECT * FROM {table} WHERE workspace_id=?", (workspace_id,)).fetchall()
+        elif table == "team_members":
+            rows = conn.execute("SELECT tm.* FROM team_members tm JOIN teams t ON t.id=tm.team_id WHERE t.workspace_id=?", (workspace_id,)).fetchall()
+        elif table == "task_assignees":
+            rows = conn.execute("SELECT ta.* FROM task_assignees ta JOIN tasks t ON t.id=ta.task_id WHERE t.workspace_id=?", (workspace_id,)).fetchall()
+        elif table in {"task_comments", "task_checklists"}:
+            rows = conn.execute(f"SELECT x.* FROM {table} x JOIN tasks t ON t.id=x.task_id WHERE t.workspace_id=?", (workspace_id,)).fetchall()
+        elif table == "task_dependencies":
+            rows = conn.execute("SELECT d.* FROM task_dependencies d JOIN tasks t ON t.id=d.task_id WHERE t.workspace_id=?", (workspace_id,)).fetchall()
+        elif table == "shared_board_items":
+            rows = conn.execute("SELECT i.* FROM shared_board_items i JOIN shared_boards b ON b.id=i.board_id WHERE b.workspace_id=?", (workspace_id,)).fetchall()
+        elif table == "chat_message_mentions":
+            rows = conn.execute("SELECT mm.* FROM chat_message_mentions mm JOIN chat_messages m ON m.id=mm.message_id WHERE m.workspace_id=?", (workspace_id,)).fetchall()
+        elif table == "notification_preferences":
+            rows = conn.execute("SELECT np.* FROM notification_preferences np JOIN memberships m ON m.user_id=np.user_id WHERE m.workspace_id=?", (workspace_id,)).fetchall()
+        else:
+            rows = []
+        export[table] = [dict(r) for r in rows]
+    member_rows = conn.execute("SELECT u.id,u.name,u.email,u.avatar_key,u.avatar_updated_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=?", (workspace_id,)).fetchall()
+    export["users"] = [dict(r) for r in member_rows]
+    return export
+
+
+def build_workspace_export(workspace_id: str, output_path: Path) -> dict[str, Any]:
+    with db() as conn:
+        rows = _workspace_export_rows(conn, workspace_id)
+    stamp = now_iso()
+    manifest = {"application": "BottleNeck", "format": "workspace-package", "formatVersion": 1,
+                "applicationVersion": APP_VERSION, "createdAt": stamp, "workspaceId": workspace_id,
+                "tables": sorted(rows.keys()), "filesIncluded": True,
+                "note": "User credentials and global server settings are deliberately excluded."}
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        zf.writestr("workspace.json", json.dumps(rows, ensure_ascii=False, separators=(",", ":")))
+        for table, folder, root in (("task_attachments", UPLOAD_DIR, "files/task_attachments"),
+                                    ("shared_nodes", SHARED_DIR, "files/shared_nodes"),
+                                    ("chat_attachments", CHAT_DIR, "files/chat_attachments")):
+            for row in rows.get(table, []):
+                stored = row.get("stored_name")
+                if not stored: continue
+                source = folder / workspace_id / Path(stored).name
+                if source.is_file(): zf.write(source, f"{root}/{Path(stored).name}")
+    return manifest
+
+
+def import_workspace_package(package_bytes: bytes, importing_user: dict[str, Any]) -> dict[str, Any]:
+    if len(package_bytes) > 512 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="بسته فضای کاری حداکثر ۵۱۲ مگابایت است.")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(package_bytes))
+        infos = archive.infolist()
+        if len(infos) > 20000 or sum(x.file_size for x in infos) > 1024 * 1024 * 1024:
+            raise ValueError("archive too large")
+        for info in infos:
+            path = Path(info.filename)
+            if path.is_absolute() or ".." in path.parts or info.is_dir():
+                if info.is_dir(): continue
+                raise ValueError("unsafe archive path")
+        manifest = json.loads(archive.read("manifest.json"))
+        rows = json.loads(archive.read("workspace.json"))
+        if manifest.get("application") != "BottleNeck" or manifest.get("format") != "workspace-package" or manifest.get("formatVersion") != 1:
+            raise ValueError("unsupported package")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="بسته خروجی معتبر یا قابل پشتیبانی نیست.") from exc
+    old_workspace = (rows.get("workspaces") or [{}])[0]
+    if not old_workspace.get("id"):
+        raise HTTPException(status_code=400, detail="شناسه فضای کاری در بسته پیدا نشد.")
+    owner_id = importing_user["user_id"]
+    new_workspace_id = new_id()
+    id_map: dict[str, str] = {old_workspace["id"]: new_workspace_id}
+    # Map member identities by email. Unknown people are attributed to the importer;
+    # credentials are never imported as part of a workspace package.
+    user_map: dict[str, str] = {}
+    with db() as conn:
+        for person in rows.get("users", []):
+            if person.get("id") == owner_id:
+                user_map[person["id"]] = owner_id
+                continue
+            matched = conn.execute("SELECT id FROM users WHERE email=? COLLATE NOCASE", (person.get("email", ""),)).fetchone()
+            user_map[person["id"]] = matched["id"] if matched else owner_id
+        for table_rows in rows.values():
+            if not isinstance(table_rows, list): continue
+            for row in table_rows:
+                old_id = row.get("id") if isinstance(row, dict) else None
+                if old_id and old_id not in user_map and old_id != old_workspace.get("id"):
+                    id_map.setdefault(old_id, new_id())
+        ordered_tables = ["teams", "projects", "workspace_custom_roles", "memberships", "workspace_settings", "workspace_status_labels",
+                          "workspace_role_permissions", "workspace_custom_role_permissions", "tasks", "team_members",
+                          "task_assignees", "task_comments", "task_checklists", "task_attachments", "time_entries",
+                          "task_dependencies", "recurring_rules", "task_templates", "task_approvals", "shared_boards",
+                          "shared_nodes", "shared_node_role_acl", "shared_board_items", "chat_messages", "chat_attachments",
+                          "chat_message_mentions", "notifications", "activity_logs", "workspace_events", "workspace_presence",
+                          "notification_preferences"]
+        stamp = now_iso()
+        base_name = str(old_workspace.get("name") or "فضای کاری واردشده")[:100]
+        conn.execute("INSERT INTO workspaces(id,name,created_by,created_at) VALUES(?,?,?,?)",
+                     (new_workspace_id, f"{base_name} (واردشده)", owner_id, stamp))
+        conn.execute("INSERT INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)",
+                     (new_id(), new_workspace_id, owner_id, "owner", stamp))
+        for table in ordered_tables:
+            table_rows = rows.get(table, [])
+            if not table_rows: continue
+            valid_cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for original in table_rows:
+                row = {k: v for k, v in original.items() if k in valid_cols}
+                for key, value in list(row.items()):
+                    if key == "id" and value in id_map: row[key] = id_map[value]
+                    elif key == "workspace_id": row[key] = new_workspace_id
+                    elif key in {"user_id", "created_by", "updated_by", "uploaded_by", "assigned_by", "requested_by", "approved_by", "reviewed_by", "actor_id", "invited_by"} and value:
+                        row[key] = user_map.get(value, owner_id)
+                    elif key.endswith("_id") and value:
+                        row[key] = id_map.get(value, user_map.get(value, value))
+                if table == "memberships":
+                    row["id"] = new_id()
+                    row["workspace_id"] = new_workspace_id
+                    row["user_id"] = user_map.get(original.get("user_id"), owner_id)
+                    if row["user_id"] == owner_id:
+                        row["role"] = "owner"
+                        row["custom_role_id"] = None
+                    elif row.get("role") == "owner":
+                        row["role"] = "admin"
+                    cols = list(row.keys())
+                    placeholders = ",".join("?" for _ in cols)
+                    conn.execute(f"INSERT OR IGNORE INTO memberships ({','.join(cols)}) VALUES ({placeholders})", [row[c] for c in cols])
+                    continue
+                if table == "workspace_custom_role_permissions":
+                    row["workspace_id"] = new_workspace_id
+                if table == "team_members":
+                    row["user_id"] = user_map.get(original.get("user_id"), owner_id)
+                if table == "notification_preferences":
+                    row["user_id"] = user_map.get(original.get("user_id"), owner_id)
+                if table == "workspace_presence":
+                    row["user_id"] = user_map.get(original.get("user_id"), owner_id)
+                if table == "workspace_role_permissions": row["workspace_id"] = new_workspace_id
+                if not row: continue
+                cols = list(row.keys())
+                placeholders = ",".join("?" for _ in cols)
+                try:
+                    conn.execute(f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) VALUES ({placeholders})", [row[c] for c in cols])
+                except sqlite3.IntegrityError:
+                    continue
+        # Guarantee a valid owner and workspace setup even when the source owner was not a package member.
+        conn.execute("INSERT OR IGNORE INTO memberships(id,workspace_id,user_id,role,joined_at) VALUES(?,?,?,?,?)",
+                     (new_id(), new_workspace_id, owner_id, "owner", stamp))
+        conn.execute("INSERT OR IGNORE INTO workspace_settings(workspace_id,created_at) VALUES(?,?)", (new_workspace_id, stamp))
+        for key, label, color, position in [("todo","در صف","neutral",0),("in-progress","در حال انجام","blue",1),("review","در بررسی","gold",2),("blocked","متوقف‌شده","red",3),("done","تکمیل‌شده","green",4)]:
+            conn.execute("INSERT OR IGNORE INTO workspace_status_labels(workspace_id,status_key,label,color,position,updated_at) VALUES(?,?,?,?,?,?)",
+                         (new_workspace_id,key,label,color,position,stamp))
+        # Copy bundled file payloads into the new workspace folders.
+        file_roots = {"task_attachments": UPLOAD_DIR / new_workspace_id, "shared_nodes": SHARED_DIR / new_workspace_id, "chat_attachments": CHAT_DIR / new_workspace_id}
+        for table, folder in file_roots.items():
+            folder.mkdir(parents=True, exist_ok=True)
+            prefix = f"files/{table}/"
+            for info in infos:
+                if info.filename.startswith(prefix):
+                    name = Path(info.filename).name
+                    if name and name not in {".", ".."}:
+                        (folder / name).write_bytes(archive.read(info))
+        server_audit(conn, owner_id, "workspace.import", new_workspace_id, {"sourceWorkspace": old_workspace.get("name"), "tables": len(ordered_tables)})
+        log_activity(conn, new_workspace_id, owner_id, "workspace", new_workspace_id, "imported", "فضای کاری از بسته BottleNeck وارد شد.")
+    return {"workspaceId": new_workspace_id, "workspaceName": f"{base_name} (واردشده)"}
+
+
+@app.get("/api/me")
+def me_server_admin(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Re-register the enriched endpoint after the original for compatibility with older callers.
+    return {"id": user["user_id"], "name": user["name"], "email": user["email"], "role": user["role"],
+            "roleName": user.get("custom_role_name") or {"owner":"مالک","admin":"مدیر","member":"عضو"}.get(user["role"],"عضو"),
+            "customRoleId": user.get("custom_role_id"), "roleColor": user.get("custom_role_color"),
+            "avatarUrl": f"/api/users/{user['user_id']}/avatar?v={user.get('avatar_updated_at') or ''}" if user.get("avatar_key") else None,
+            "workspaceId": user["workspace_id"], "workspaceName": user["workspace_name"],
+            "onboardingCompleted": bool(user["onboarding_completed"]), "canManage": has_permission(user, "workspace.manage"),
+            "permissions": permissions_for_user(user), "instanceAdmin": is_instance_admin(user["user_id"]),
+            "serverAdminRole": (server_admin_record(user["user_id"]) or {}).get("role")}
+
+
+@app.get("/api/server-admin/settings")
+def server_admin_get_settings(user: dict[str, Any] = Depends(require_server_permission("overview"))) -> dict[str, Any]:
+    return {"host": _server_setting("bind_host", os.getenv("BOTTLENECK_HOST") or "0.0.0.0"),
+            "port": int(_server_setting("bind_port", os.getenv("BOTTLENECK_PORT") or "1939")),
+            "backupIntervalHours": _server_setting_int("backup_interval_hours", BACKUP_INTERVAL_HOURS, 1, 720),
+            "backupRetention": _server_setting_int("backup_retention", BACKUP_RETENTION, 2, 100),
+            "httpsEnabled": COOKIE_SECURE, "restartRequired": True}
+
+
+@app.put("/api/server-admin/settings")
+def server_admin_update_settings(payload: dict[str, Any], user: dict[str, Any] = Depends(require_server_permission("settings.manage"))) -> dict[str, Any]:
+    try:
+        interval = int(payload.get("backupIntervalHours", BACKUP_INTERVAL_HOURS))
+        retention = int(payload.get("backupRetention", BACKUP_RETENTION))
+        port = int(payload.get("port", _server_setting("bind_port", "1939")))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="مقادیر زمان‌بندی و پورت باید عدد صحیح باشند.")
+    host = str(payload.get("host", _server_setting("bind_host", "0.0.0.0"))).strip()
+    if not 1 <= interval <= 720 or not 2 <= retention <= 100:
+        raise HTTPException(status_code=422, detail="فاصله پشتیبان باید ۱ تا ۷۲۰ ساعت و تعداد نگهداری ۲ تا ۱۰۰ باشد.")
+    if not 1024 <= port <= 65535:
+        raise HTTPException(status_code=422, detail="پورت باید بین ۱۰۲۴ تا ۶۵۵۳۵ باشد.")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError as exc:
+        if host not in {"localhost"}:
+            raise HTTPException(status_code=422, detail="نشانی میزبان باید IP معتبر یا localhost باشد.") from exc
+    stamp = now_iso()
+    with db() as conn:
+        for key, value in (("backup_interval_hours", interval), ("backup_retention", retention),
+                           ("bind_host", host), ("bind_port", port)):
+            conn.execute("INSERT INTO server_settings(setting_key,setting_value,updated_by,updated_at) VALUES(?,?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                         (key, str(value), user["user_id"], stamp))
+        server_audit(conn, user["user_id"], "server.settings.update", "server", {"intervalHours": interval, "retention": retention, "host": host, "port": port})
+    result = server_admin_get_settings(user)
+    result["restartRequired"] = True
+    return result
+
+
+@app.get("/api/server-admin/overview")
+def server_admin_overview(user: dict[str, Any] = Depends(require_server_permission("overview"))) -> dict[str, Any]:
+    data = _server_overview()
+    data["serverRole"] = user.get("server_admin_role", "auditor")
+    return data
+
+
+@app.get("/api/server-admin/workspaces")
+def server_admin_workspaces(user: dict[str, Any] = Depends(require_server_permission("workspaces.view"))) -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("""SELECT w.id,w.name,w.created_at,u.name AS owner_name,u.email AS owner_email,
+            (SELECT COUNT(*) FROM memberships m WHERE m.workspace_id=w.id) AS member_count,
+            (SELECT COUNT(*) FROM tasks t WHERE t.workspace_id=w.id) AS task_count,
+            (SELECT COUNT(*) FROM shared_nodes n WHERE n.workspace_id=w.id) AS shared_item_count
+            FROM workspaces w JOIN users u ON u.id=w.created_by ORDER BY w.created_at DESC""").fetchall()
+    return {"items": [dict(r) for r in rows]}
+
+
+@app.get("/api/server-admin/users")
+def server_admin_users(user: dict[str, Any] = Depends(require_server_permission("users.view"))) -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("""SELECT u.id,u.name,u.email,u.created_at,
+            (SELECT COUNT(*) FROM memberships m WHERE m.user_id=u.id) AS workspace_count,
+            (SELECT COUNT(*) FROM sessions s WHERE s.user_id=u.id AND s.expires_at>?) AS active_sessions,
+            sa.role AS server_role,sa.enabled AS server_admin_enabled
+            FROM users u LEFT JOIN server_admins sa ON sa.user_id=u.id ORDER BY u.created_at DESC LIMIT 500""", (now_iso(),)).fetchall()
+    return {"items": [dict(r) for r in rows]}
+
+
+@app.get("/api/server-admin/logs")
+def server_admin_logs(limit: int = 100, user: dict[str, Any] = Depends(require_server_permission("logs.view"))) -> dict[str, Any]:
+    limit = max(1, min(limit, 500))
+    with db() as conn:
+        rows = conn.execute("""SELECT l.*,u.name AS actor_name,u.email AS actor_email FROM server_audit_logs l
+            LEFT JOIN users u ON u.id=l.actor_user_id ORDER BY l.id DESC LIMIT ?""", (limit,)).fetchall()
+    try:
+        lines = SERVER_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]
+    except OSError:
+        lines = []
+    return {"items": [dict(r) for r in rows], "serverLines": lines}
+
+
+@app.get("/api/server-admin/backups")
+def server_admin_backups(user: dict[str, Any] = Depends(require_server_permission("backups.view"))) -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM backup_catalog ORDER BY created_at DESC LIMIT 100").fetchall()
+    return {"items": [dict(r) for r in rows], "intervalHours": BACKUP_INTERVAL_HOURS, "retention": BACKUP_RETENTION}
+
+
+@app.post("/api/server-admin/backups")
+def server_admin_create_backup(user: dict[str, Any] = Depends(require_server_permission("backups.create"))) -> dict[str, Any]:
+    result = _build_backup(user["user_id"], False)
+    with db() as conn: server_audit(conn, user["user_id"], "backup.create", result["filename"], {"bytes": result["sizeBytes"]})
+    return result
+
+
+@app.get("/api/server-admin/export/workspaces/{workspace_id}")
+def server_admin_export_workspace(workspace_id: str, user: dict[str, Any] = Depends(require_server_permission("exports"))) -> FileResponse:
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+        if not exists: raise HTTPException(status_code=404, detail="فضای کاری پیدا نشد.")
+        row = conn.execute("SELECT name FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+        server_audit(conn, user["user_id"], "workspace.export", workspace_id, {"name": row["name"]})
+    temp_dir = Path(tempfile.mkdtemp(prefix="bottleneck-export-"))
+    target = temp_dir / f"workspace-{workspace_id}.zip"
+    try: build_workspace_export(workspace_id, target)
+    except Exception: shutil.rmtree(temp_dir, ignore_errors=True); raise
+    from starlette.background import BackgroundTask
+    return FileResponse(target, filename=target.name, media_type="application/zip", background=BackgroundTask(lambda: shutil.rmtree(temp_dir, ignore_errors=True)))
+
+
+def _csv_response(rows: list[dict[str, Any]], fieldnames: list[str], filename: str) -> Response:
+    buff = io.StringIO(newline="")
+    writer = csv.DictWriter(buff, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    payload = "\ufeff" + buff.getvalue()
+    return Response(payload, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/api/server-admin/export/tasks.csv")
+def server_admin_export_tasks(workspace_id: str, user: dict[str, Any] = Depends(require_server_permission("exports"))) -> Response:
+    with db() as conn:
+        rows = conn.execute("""SELECT t.id,t.title,t.description,t.status,t.priority,t.due_date,t.estimate,
+            COALESCE(p.name,'') AS project,COALESCE(tm.name,'') AS team,
+            COALESCE((SELECT GROUP_CONCAT(u.email,';') FROM task_assignees ta JOIN users u ON u.id=ta.user_id WHERE ta.task_id=t.id),'') AS assignee_emails
+            FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN teams tm ON tm.id=t.team_id
+            WHERE t.workspace_id=? ORDER BY t.created_at DESC""", (workspace_id,)).fetchall()
+        if not conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone(): raise HTTPException(status_code=404, detail="فضای کاری پیدا نشد.")
+        server_audit(conn, user["user_id"], "tasks.export.csv", workspace_id, {"count": len(rows)})
+    fields = ["id","title","description","status","priority","due_date","estimate","project","team","assignee_emails"]
+    return _csv_response([dict(r) for r in rows], fields, f"bottleneck-tasks-{workspace_id[:8]}.csv")
+
+
+@app.get("/api/server-admin/export/projects.csv")
+def server_admin_export_projects(workspace_id: str, user: dict[str, Any] = Depends(require_server_permission("exports"))) -> Response:
+    with db() as conn:
+        rows = conn.execute("SELECT name,description,color,status FROM projects WHERE workspace_id=? ORDER BY name", (workspace_id,)).fetchall()
+        if not conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone(): raise HTTPException(status_code=404, detail="فضای کاری پیدا نشد.")
+        server_audit(conn, user["user_id"], "projects.export.csv", workspace_id, {"count": len(rows)})
+    return _csv_response([dict(r) for r in rows], ["name","description","color","status"], f"bottleneck-projects-{workspace_id[:8]}.csv")
+
+
+@app.post("/api/server-admin/import/tasks.csv")
+async def server_admin_import_tasks(workspace_id: str, request: Request, user: dict[str, Any] = Depends(require_server_permission("imports"))) -> dict[str, Any]:
+    raw = await request.body()
+    if len(raw) > 20 * 1024 * 1024: raise HTTPException(status_code=413, detail="فایل CSV حداکثر ۲۰ مگابایت است.")
+    try: text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc: raise HTTPException(status_code=400, detail="فایل باید UTF-8 باشد.") from exc
+    reader = csv.DictReader(io.StringIO(text))
+    required = {"title"}
+    if not reader.fieldnames or not required.issubset(set(reader.fieldnames)): raise HTTPException(status_code=422, detail="ستون title در فایل CSV الزامی است.")
+    created = 0; skipped = 0; stamp = now_iso()
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone(): raise HTTPException(status_code=404, detail="فضای کاری پیدا نشد.")
+        for item in reader:
+            title = (item.get("title") or "").strip()
+            if len(title) < 2: skipped += 1; continue
+            status = item.get("status") or "todo"; priority = item.get("priority") or "medium"
+            if status not in STATUSES: status = "todo"
+            if priority not in PRIORITIES: priority = "medium"
+            team_id = None; project_id = None
+            if (item.get("team") or "").strip():
+                team = conn.execute("SELECT id FROM teams WHERE workspace_id=? AND name=? COLLATE NOCASE", (workspace_id,item["team"].strip())).fetchone(); team_id = team["id"] if team else None
+            if (item.get("project") or "").strip():
+                project = conn.execute("SELECT id FROM projects WHERE workspace_id=? AND name=? COLLATE NOCASE", (workspace_id,item["project"].strip())).fetchone(); project_id = project["id"] if project else None
+            task_id = new_id()
+            due = (item.get("due_date") or "").strip() or None
+            if due and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due): due = None
+            try: estimate = float(item.get("estimate")) if item.get("estimate") else None
+            except ValueError: estimate = None
+            conn.execute("INSERT INTO tasks(id,workspace_id,title,description,status,priority,team_id,project_id,due_date,estimate,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (task_id,workspace_id,title,(item.get("description") or "")[:12000],status,priority,team_id,project_id,due,estimate,user["user_id"],stamp,stamp))
+            for email in (item.get("assignee_emails") or "").split(";"):
+                if email.strip():
+                    member = conn.execute("SELECT u.id FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=? AND u.email=? COLLATE NOCASE", (workspace_id,email.strip())).fetchone()
+                    if member: conn.execute("INSERT OR IGNORE INTO task_assignees(task_id,user_id,assigned_by,created_at) VALUES(?,?,?,?)", (task_id,member["id"],user["user_id"],stamp))
+            created += 1
+        server_audit(conn,user["user_id"],"tasks.import.csv",workspace_id,{"created":created,"skipped":skipped})
+    return {"created":created,"skipped":skipped}
+
+
+@app.post("/api/server-admin/import/projects.csv")
+async def server_admin_import_projects(workspace_id: str, request: Request, user: dict[str, Any] = Depends(require_server_permission("imports"))) -> dict[str, Any]:
+    raw = await request.body()
+    if len(raw) > 10 * 1024 * 1024: raise HTTPException(status_code=413, detail="فایل CSV حداکثر ۱۰ مگابایت است.")
+    try: text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc: raise HTTPException(status_code=400, detail="فایل باید UTF-8 باشد.") from exc
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames or "name" not in reader.fieldnames: raise HTTPException(status_code=422, detail="ستون name در فایل CSV الزامی است.")
+    created = updated = skipped = 0; stamp = now_iso()
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone(): raise HTTPException(status_code=404, detail="فضای کاری پیدا نشد.")
+        for item in reader:
+            name = (item.get("name") or "").strip()
+            if len(name) < 2: skipped += 1; continue
+            status = item.get("status") or "active"
+            if status not in {"active","completed","archived"}: status = "active"
+            old = conn.execute("SELECT id FROM projects WHERE workspace_id=? AND name=? COLLATE NOCASE", (workspace_id,name)).fetchone()
+            if old:
+                conn.execute("UPDATE projects SET description=?,color=?,status=?,updated_at=? WHERE id=?", ((item.get("description") or "")[:4000],(item.get("color") or "rust")[:32],status,stamp,old["id"])); updated += 1
+            else:
+                conn.execute("INSERT INTO projects(id,workspace_id,name,description,color,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                             (new_id(),workspace_id,name,(item.get("description") or "")[:4000],(item.get("color") or "rust")[:32],status,user["user_id"],stamp,stamp)); created += 1
+        server_audit(conn,user["user_id"],"projects.import.csv",workspace_id,{"created":created,"updated":updated,"skipped":skipped})
+    return {"created":created,"updated":updated,"skipped":skipped}
+
+
+@app.post("/api/server-admin/import/workspace")
+async def server_admin_import_workspace(request: Request, user: dict[str, Any] = Depends(require_server_permission("imports"))) -> dict[str, Any]:
+    raw = await request.body()
+    result = import_workspace_package(raw, user)
+    return result
+
+
+@app.post("/api/server-admin/admins")
+def server_admin_add_operator(payload: dict[str, str], user: dict[str, Any] = Depends(require_server_permission("admins.manage"))) -> dict[str, Any]:
+    email = valid_email(payload.get("email", "")); role = payload.get("role", "operator")
+    if role not in {"operator", "auditor"}: raise HTTPException(status_code=422, detail="نقش مدیر سرور باید operator یا auditor باشد.")
+    with db() as conn:
+        target = conn.execute("SELECT id,name,email FROM users WHERE email=? COLLATE NOCASE", (email,)).fetchone()
+        if not target: raise HTTPException(status_code=404, detail="ابتدا کاربر باید یک‌بار در BottleNeck حساب بسازد.")
+        existing = conn.execute("SELECT role FROM server_admins WHERE user_id=? AND enabled=1", (target["id"],)).fetchone()
+        if existing and existing["role"] == "owner":
+            raise HTTPException(status_code=409, detail="نقش مالک اصلی نصب قابل تبدیل به اپراتور یا ناظر نیست.")
+        conn.execute("INSERT INTO server_admins(user_id,role,enabled,created_by,created_at) VALUES(?,?,1,?,?) ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,enabled=1,created_by=excluded.created_by",
+                     (target["id"],role,user["user_id"],now_iso()))
+        server_audit(conn,user["user_id"],"server.admin.grant",email,{"role":role})
+    return {"ok":True,"email":email,"role":role}
+
+
+@app.delete("/api/server-admin/admins/{target_user_id}")
+def server_admin_revoke_operator(target_user_id: str, user: dict[str, Any] = Depends(require_server_permission("admins.manage"))) -> dict[str, bool]:
+    if target_user_id == user["user_id"]: raise HTTPException(status_code=400, detail="نمی‌توانید دسترسی مدیر اصلی خودتان را لغو کنید.")
+    with db() as conn:
+        row = conn.execute("SELECT role FROM server_admins WHERE user_id=?", (target_user_id,)).fetchone()
+        if not row: raise HTTPException(status_code=404, detail="مدیر سرور پیدا نشد.")
+        if row["role"] == "owner": raise HTTPException(status_code=403, detail="مالک اصلی فقط از CLI محلی قابل تغییر است.")
+        conn.execute("DELETE FROM server_admins WHERE user_id=?", (target_user_id,))
+        server_audit(conn,user["user_id"],"server.admin.revoke",target_user_id,{})
+    return {"ok":True}

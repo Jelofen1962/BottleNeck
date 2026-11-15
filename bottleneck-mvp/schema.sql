@@ -1,5 +1,5 @@
--- BottleNeck v0.6.0 SQLite schema
--- Existing v0.5.0 databases are upgraded automatically at server startup.
+-- BottleNeck v0.9.0 SQLite schema
+-- Existing MVP databases are upgraded automatically when the application starts.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   onboarding_completed INTEGER NOT NULL DEFAULT 0,
+  avatar_key TEXT,
+  avatar_updated_at TEXT,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -20,6 +22,7 @@ CREATE TABLE IF NOT EXISTS memberships (
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('owner','admin','member')),
+  custom_role_id TEXT,
   joined_at TEXT NOT NULL,
   UNIQUE(workspace_id, user_id)
 );
@@ -42,6 +45,19 @@ CREATE TABLE IF NOT EXISTS invitations (
   accepted_at TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS workspace_join_links (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')),
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  expires_at TEXT NOT NULL,
+  max_uses INTEGER NOT NULL DEFAULT 0,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_join_links_active ON workspace_join_links(workspace_id, revoked_at, expires_at);
 CREATE TABLE IF NOT EXISTS teams (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -305,13 +321,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  reply_to_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL,
+  edited_at TEXT,
+  deleted_at TEXT,
+  resource_type TEXT,
+  resource_id TEXT
 );
 CREATE TABLE IF NOT EXISTS workspace_presence (
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   page TEXT NOT NULL DEFAULT 'overview',
   last_seen TEXT NOT NULL,
+  active_team_id TEXT,
+  cursor_x_pct REAL,
+  cursor_y_pct REAL,
+  cursor_page TEXT,
+  cursor_color TEXT,
   PRIMARY KEY(workspace_id,user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_boards_workspace ON shared_boards(workspace_id,updated_at DESC);
@@ -320,7 +346,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_nodes_parent ON shared_nodes(workspace_id,
 CREATE INDEX IF NOT EXISTS idx_chat_channel ON chat_messages(workspace_id,channel_type,team_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_presence_last_seen ON workspace_presence(workspace_id,last_seen DESC);
 
--- BottleNeck v0.6.0: multi-workspace, account security, permissions and operations.
+-- BottleNeck v0.7.0: identity, team presence, join codes and granular workspace permissions.
 CREATE TABLE IF NOT EXISTS login_challenges (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -328,6 +354,7 @@ CREATE TABLE IF NOT EXISTS login_challenges (
   token_hash TEXT NOT NULL UNIQUE,
   expires_at TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
+  remember_me INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS user_security (
@@ -402,3 +429,76 @@ CREATE INDEX IF NOT EXISTS idx_totp_recovery_user ON totp_recovery_codes(user_id
 CREATE INDEX IF NOT EXISTS idx_password_reset_expiry ON password_reset_tokens(expires_at,used_at);
 CREATE INDEX IF NOT EXISTS idx_backup_catalog_created ON backup_catalog(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_email_jobs_status ON notification_email_jobs(status,created_at);
+
+
+-- BottleNeck v0.7.0: persistent sessions, custom roles, 15-minute join codes and presence cursors.
+CREATE TABLE IF NOT EXISTS workspace_custom_roles (
+  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#8b6bb1', base_role TEXT NOT NULL DEFAULT 'member' CHECK(base_role IN ('admin','member')),
+  created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(workspace_id,name)
+);
+CREATE TABLE IF NOT EXISTS workspace_custom_role_permissions (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, role_id TEXT NOT NULL REFERENCES workspace_custom_roles(id) ON DELETE CASCADE,
+  permission_key TEXT NOT NULL, allowed INTEGER NOT NULL DEFAULT 0, updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL, PRIMARY KEY(role_id,permission_key)
+);
+CREATE TABLE IF NOT EXISTS workspace_join_codes (
+  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')), token_hash TEXT NOT NULL UNIQUE,
+  created_by TEXT NOT NULL REFERENCES users(id), expires_at TEXT NOT NULL, max_uses INTEGER NOT NULL DEFAULT 1,
+  use_count INTEGER NOT NULL DEFAULT 0, revoked_at TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS join_code_attempts (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, window_started TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
+);
+
+
+-- BottleNeck v0.8.0: threaded chat, mentions, media and resource references.
+CREATE TABLE IF NOT EXISTS chat_attachments (
+  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  uploaded_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  channel_type TEXT NOT NULL CHECK(channel_type IN ('workspace','team')),
+  team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+  message_id TEXT REFERENCES chat_messages(id) ON DELETE CASCADE,
+  original_name TEXT NOT NULL, stored_name TEXT NOT NULL, content_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_message_mentions (
+  message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY(message_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON chat_attachments(message_id);
+CREATE INDEX IF NOT EXISTS idx_chat_attachments_staging ON chat_attachments(uploaded_by,message_id,created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_mentions_user ON chat_message_mentions(user_id,message_id);
+
+-- BottleNeck v0.9.0 instance-level administration. This is distinct from workspace roles.
+CREATE TABLE IF NOT EXISTS server_instance (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  install_id TEXT NOT NULL,
+  owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  initialized_at TEXT NOT NULL,
+  version TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS server_admins (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('owner','operator','auditor')),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS server_settings (
+  setting_key TEXT PRIMARY KEY,
+  setting_value TEXT NOT NULL,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS server_audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  target TEXT NOT NULL DEFAULT '',
+  details_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_server_audit_created ON server_audit_logs(created_at DESC);

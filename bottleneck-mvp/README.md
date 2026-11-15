@@ -1,153 +1,212 @@
-# BottleNeck v0.6.0 — MVP Release
+# BottleNeck v0.9.0 — Server Operations Release
 
-BottleNeck is a Persian-first, RTL team workspace built with FastAPI, SQLite, HTML, CSS and vanilla JavaScript. It combines task and project management, productivity tracking, shared concept boards, shared files/folders, Markdown notes, team chat, multi-workspace accounts, configurable workspace permissions, TOTP two-factor authentication and automated backups.
+BottleNeck is a Persian-first, RTL team workspace built with FastAPI, SQLite, HTML, CSS and vanilla JavaScript. It brings task/project management, collaboration, shared files and Markdown notes, team chat, productivity tools and server administration into one self-hosted installation.
 
-The desktop UI keeps the project's approximately 120% scale; narrow screens return to normal scale. The launcher binds to `0.0.0.0:1939` by default for trusted LAN access.
+The v0.9.0 release adds a dedicated server-owner CLI and a separate server-management GUI. Server-wide controls are not placed inside ordinary workspace settings. The default deployment is a trusted local network server on `0.0.0.0:1939`. The project follows the supplied anti-template design brief: restrained surfaces, purposeful type and interactions, no default indigo identity, no decorative hero gradients, no placeholder copy and no fabricated metrics.
 
 ## 1. Requirements
 
 - Windows 10/11, Linux or macOS.
 - [uv](https://docs.astral.sh/uv/).
-- Python 3.12 is installed/managed by uv during setup.
-- For LAN use on Windows, set the network profile to **Private**.
+- Python 3.12, downloaded/managed by uv if it is not already installed.
+- A private/trusted LAN for multi-device access. On Windows, set the network profile to **Private**.
 
-The project deliberately uses plain `uvicorn` plus the pure-Python `websockets` package, not `uvicorn[standard]`; the WebSocket protocol is installed explicitly while PyYAML and Microsoft C++ Build Tools are not required by the launcher.
+The project uses `uvicorn` plus the pure-Python `websockets` package. It deliberately does not install `uvicorn[standard]`, avoiding the optional PyYAML build dependency that previously required Microsoft C++ Build Tools on Python 3.15.
 
-## 2. Start on Windows
+## 2. Fresh installation on Windows
 
-1. Extract the ZIP.
-2. Open PowerShell in the `bottleneck-mvp` folder.
+1. Extract the ZIP to a folder that the Windows account can write to.
+2. Open PowerShell in `bottleneck-mvp`.
 3. Run:
 
    ```powershell
    .\start.ps1
    ```
 
-The launcher runs `uv sync --python 3.12` and starts Uvicorn on `0.0.0.0:1939`.
+4. On the first run, the **server-owner setup CLI** asks for the installation owner's display name, email, password and primary workspace name. This is a server-level identity, separate from ordinary workspace roles.
+5. After setup, the CLI starts Uvicorn in the foreground. Keep this terminal open while the team uses BottleNeck.
+
+The default addresses are:
 
 - Host computer: `http://127.0.0.1:1939`
 - Other devices on the same LAN: `http://<host-LAN-IP>:1939`
 - API reference: `http://<host-LAN-IP>:1939/api/docs`
 
-The launcher prints detected LAN URLs. They are also listed in **Settings → Local network access**. If Windows Firewall blocks other devices, set the network profile to Private and run `allow-lan-firewall.ps1` once from an elevated PowerShell window. The helper creates a TCP 1939 rule limited to the Private profile and local subnet.
+The CLI prints the detected LAN URLs. If Windows Firewall blocks connections, set the network profile to **Private**, then run `allow-lan-firewall.ps1` once from an elevated PowerShell window. The rule is restricted to the Private profile and local subnet.
 
-## 3. Start on Linux / macOS
+Stop the foreground server with `Ctrl+C`.
+
+## 3. Fresh installation on Linux / macOS
 
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-Manual equivalent:
+The script runs `uv sync --python 3.12`, runs the server-owner setup prompt, then launches the CLI-managed Uvicorn process on the configured host and port.
 
-```bash
-uv sync --python 3.12
-uv run --python 3.12 uvicorn main:app --host 0.0.0.0 --port 1939
-```
+## 4. Upgrade from v0.8.x
 
-Stop the server with `Ctrl+C`. The host computer must remain on and the BottleNeck process must remain running for other devices to use the workspace.
+1. Stop the old BottleNeck server with `Ctrl+C`.
+2. Make a separate copy of the complete `data` and `backups` directories. Do not rely only on the automatic backups stored on the same disk.
+3. Extract v0.9.0 into a **new** folder.
+4. Copy the old `data` and `backups` directories into the new `bottleneck-mvp` folder.
+5. Run `start.ps1` (Windows) or `start.sh` (Linux/macOS).
+6. The first v0.9 startup creates the server-operations tables and migrates the earliest workspace creator to the initial server-owner role. Existing user accounts, memberships, tasks, shared files and workspaces remain in the database.
 
-## 4. First-run setup
+For an older installation that has accounts but no workspace or no identifiable first owner, the CLI asks for credentials to link an existing account. It does not silently elevate a random account registered after the server is already running.
 
-1. Open BottleNeck on the host computer.
-2. Register the first account and create the first workspace. That account becomes the initial installation owner.
-3. Invite colleagues from **Teams and Members**. Invitation links are email-specific and expire after seven days. Share them manually unless you separately configure an email system.
-4. Create teams and assign members to them.
-5. Use the workspace selector in the top bar to switch between workspaces or create another workspace.
-6. Use **Settings** to review account security, email preferences, role permissions and backup status.
+After the migration, sign in with the account that created the first workspace. The **مدیریت سرور** navigation group appears for server administrators only.
 
-A signed-in user can belong to more than one workspace. Workspace data is scoped to the active membership/session.
+## 5. Server owner and server roles
 
-## 5. What is in v0.6.0
+BottleNeck distinguishes installation-wide administration from workspace administration.
 
-### Tasks and productivity
+| Server role | Capabilities |
+|---|---|
+| `owner` | Full instance administration, configuration, operators, backups, imports/exports and restore via local CLI |
+| `operator` | View operational status/users/workspaces/logs/backup inventory; create backups; import and export data. Full backup ZIP downloads remain owner-only. |
+| `auditor` | Read-only operational overview, users, workspaces, logs, backup inventory and data exports. Cannot create or download full backup archives. |
+| regular account | No server-wide administration; workspace access follows workspace roles and permissions |
 
-- Tasks, projects, teams, Kanban, calendar, multi-assignee tasks, comments, checklists and private task attachments (10 MB per task attachment).
-- Dependencies with cycle validation and a completion guard while prerequisites remain open.
-- Time tracking with one active timer per user, estimates versus tracked time and daily/weekly reports.
-- Reusable task templates, recurring-task rules and task approval requests.
-- Workspace-specific labels/colors for the five built-in task statuses.
-- In-app notifications, activity history and team presence.
+The initial server owner is configured by the installation CLI. An existing v0.8 installation is migrated by identifying the creator of its earliest workspace. The server-owner role is not a workspace role and cannot be granted through ordinary workspace member settings.
 
-### Shared workspace
+Only the installation owner can grant or revoke server operators/auditors. The web GUI cannot promote someone to `owner`. The owner account is protected from removal by the regular revoke operation.
 
-- Shared concept boards with movable sticky notes, plain-text cards, links and task links.
-- Shared drive with nested folders, Markdown notes and file uploads (50 MB per shared file).
-- Workspace-wide, team-only and password-protected sharing.
-- Per-role read/write ACL settings for shared folders/files; parent-folder restrictions are inherited by descendants.
-- XHR upload progress and authenticated, permission-checked file downloads.
-- GFM Markdown preview (headings, lists, task lists, tables, links, quotes and fenced code) sanitized with DOMPurify.
-- Workspace chat and team-specific chat channels.
-- Authenticated WebSocket event stream for shared workspace updates. Presence refresh remains periodic (about 12 seconds).
+## 6. Server management GUI
 
-### v0.6.0 administration and security
+Open **مدیریت سرور** in the application sidebar. It is separate from workspace settings and visible only to users who have a server-admin role.
 
-- Multiple workspaces per account, workspace creation and workspace switching.
-- Configurable permission matrix for the `admin` and `member` roles. The workspace owner always has full access within their workspace.
-- Shared-drive role-level read/write rules.
-- TOTP two-factor authentication with ten single-use recovery codes. Each login challenge expires after five minutes and allows up to five failed code attempts.
-- Password reset links expire after 30 minutes and are single-use. Public self-service email delivery requires SMTP. A workspace admin can also create a reset link for a member and share it manually over a trusted channel.
-- Optional SMTP delivery for notification emails and password reset messages.
-- Automatic backup scheduler (24-hour default interval; 14 retained copies by default) plus manual backup creation and download.
-- Backups include the SQLite database, task uploads, shared files and a manifest. They are ZIP archives saved under `backups/`.
-- Optional HTTPS directly through Uvicorn certificate/key settings in the launch scripts.
-- Authenticated WebSocket connections are checked against the server-side session during the connection lifetime.
+The page provides:
 
-## 6. Multi-workspace roles and permissions
+- Version, health, SQLite integrity, uptime, bound host and port.
+- Account, workspace, active-session and server-admin counts.
+- Database/data-folder size and free disk space.
+- Server log size and recent audit events.
+- Server configuration: bind host, port, automatic backup interval and retention.
+- Workspace inventory with owner, member/task/file counts.
+- Full workspace ZIP export and selected task/project CSV export.
+- Task/project CSV imports and full workspace package import.
+- Server user and operator/auditor listing and management.
+- Backup listing, manual backup creation and download.
 
-Each workspace has `owner`, `admin` and `member` memberships. The owner can configure the admin/member permission matrix in Settings. The owner has full permissions inside that workspace. Examples of configurable permissions include workspace management, member invitations/management, team management, report viewing, deleting tasks/projects and managing shared items.
+Changing the bind host or port requires a server restart. The GUI does not attempt to terminate its own server process. Use the CLI/terminal to stop it with `Ctrl+C`, then start it again.
 
-The backup archive contains the database and files for the entire BottleNeck installation, not just one workspace. For this reason, backup listing, creation and download are restricted to the **initial installation owner** (the account that created the first workspace). A later workspace owner does not automatically become the instance-wide backup administrator.
+Full-system restore is intentionally a local CLI operation. It must not be triggered from an ordinary browser session.
 
-## 7. Account security
+## 7. Server Operations CLI
 
-### Two-factor authentication
+Run commands from the project folder. The launcher has already installed the environment; otherwise run `uv sync --python 3.12` first.
 
-In **Settings → Account security**:
-
-1. Start TOTP setup.
-2. Add the secret key or `otpauth` URI to an authenticator app.
-3. Store the ten recovery codes somewhere safe. They are shown only during setup.
-4. Enter the current six-digit TOTP code to enable two-factor authentication.
-
-A recovery code is eight hexadecimal characters and can be used only once in place of a TOTP code. Keep the server's `data/` directory private; it contains the TOTP secret needed to verify sign-ins. If the authenticator is lost, use a recovery code. If both the authenticator and all recovery codes are lost, an administrator must perform an out-of-band account recovery; there is no self-service TOTP reset endpoint in this MVP.
-
-### Password reset
-
-The public **Forgot password** action sends a reset email only when SMTP is configured. The response does not reveal whether an email address exists. Reset links are single-use and expire after 30 minutes; completing a reset revokes that account's existing sessions.
-
-If SMTP is not configured, the public form cannot deliver the link. A workspace admin can generate a member reset link from the member-management interface and give it to the person through a trusted channel. Do not paste reset links into public chats.
-
-## 8. Email configuration (optional)
-
-Set environment variables before running the launcher:
-
-| Variable | Default | Description |
-|---|---:|---|
-| `BOTTLENECK_SMTP_HOST` | unset | SMTP server hostname |
-| `BOTTLENECK_SMTP_PORT` | `587` | SMTP server port |
-| `BOTTLENECK_SMTP_FROM` | unset | Sender address |
-| `BOTTLENECK_SMTP_STARTTLS` | `1` | Use STARTTLS when `1` |
-| `BOTTLENECK_SMTP_USER` | unset | Optional SMTP username |
-| `BOTTLENECK_SMTP_PASSWORD` | unset | Optional SMTP password |
-
-PowerShell example (replace values with your SMTP provider's settings):
+### Status and diagnostics
 
 ```powershell
-$env:BOTTLENECK_SMTP_HOST = "smtp.example.com"
-$env:BOTTLENECK_SMTP_PORT = "587"
-$env:BOTTLENECK_SMTP_FROM = "bottleneck@example.com"
-$env:BOTTLENECK_SMTP_STARTTLS = "1"
-$env:BOTTLENECK_SMTP_USER = "bottleneck@example.com"
-$env:BOTTLENECK_SMTP_PASSWORD = "YOUR_SMTP_PASSWORD"
-.\start.ps1
+uv run --python 3.12 python bottleneck_cli.py status
+uv run --python 3.12 python bottleneck_cli.py doctor
+uv run --python 3.12 python bottleneck_cli.py logs --lines 100
 ```
 
-Users must enable email notifications in their own notification preferences. SMTP is used for the notification queue and public password-reset email. Verify sender authentication and delivery with your provider; BottleNeck does not include a mail-provider setup wizard.
+`doctor` checks SQLite integrity, foreign keys, server-owner configuration, and write access to the database, backup, upload, shared-file, chat-file and server-log directories.
 
-## 9. HTTPS configuration (optional)
+### Accounts, workspaces and server administrators
 
-For a trusted LAN MVP, the launcher defaults to HTTP. To enable Uvicorn HTTPS, provide a certificate and private key before starting:
+```powershell
+uv run --python 3.12 python bottleneck_cli.py users list
+uv run --python 3.12 python bottleneck_cli.py workspaces list
+uv run --python 3.12 python bottleneck_cli.py admin list
+uv run --python 3.12 python bottleneck_cli.py admin grant --email ops@example.com --role operator
+uv run --python 3.12 python bottleneck_cli.py admin grant --email audit@example.com --role auditor
+uv run --python 3.12 python bottleneck_cli.py admin revoke --email ops@example.com
+```
+
+The target must have a BottleNeck account first. The CLI supports `operator` and `auditor`; the installation owner is created only by first-run setup or the legacy migration path.
+
+### Configuration
+
+```powershell
+uv run --python 3.12 python bottleneck_cli.py config show
+uv run --python 3.12 python bottleneck_cli.py config set bind_host 0.0.0.0
+uv run --python 3.12 python bottleneck_cli.py config set bind_port 1939
+uv run --python 3.12 python bottleneck_cli.py config set backup_interval_hours 24
+uv run --python 3.12 python bottleneck_cli.py config set backup_retention 14
+```
+
+Supported settings:
+
+- `bind_host`: `0.0.0.0`, `localhost`, or a valid local IP address.
+- `bind_port`: 1024–65535.
+- `backup_interval_hours`: 1–720.
+- `backup_retention`: 2–100 archives.
+
+The bind host/port take effect after restart. The default is `0.0.0.0:1939`.
+
+### Backup and restore
+
+```powershell
+uv run --python 3.12 python bottleneck_cli.py backup
+```
+
+A full backup is a ZIP containing the SQLite database, task uploads, shared-drive files, chat attachments and a manifest. The default automatic schedule is every 24 hours and the default retention is 14 archives. The scheduler runs inside the server process, so the server must be running. Backups are normally stored in `backups/`.
+
+To restore, stop BottleNeck first, copy the current `data` folder somewhere safe, then run:
+
+```powershell
+uv run --python 3.12 python bottleneck_cli.py restore-backup --input .\backups\bottleneck-backup-example.zip --confirm-offline --yes
+```
+
+Both confirmation flags are mandatory. The CLI checks configured/local listening ports, validates the ZIP paths and manifest, checks the archive checksum and SQLite integrity/foreign keys, creates a pre-restore backup where possible, and uses rollback copies if file replacement fails. Start BottleNeck again with `start.ps1`.
+
+### Selective data import/export
+
+Export a full workspace package (JSON manifest/data plus related shared files; no passwords, credentials, sessions or global server settings):
+
+```powershell
+uv run --python 3.12 python bottleneck_cli.py export workspace --workspace "Workspace Name" --output .\workspace-export.zip
+```
+
+Import a workspace package as a **new workspace**:
+
+```powershell
+uv run --python 3.12 python bottleneck_cli.py import workspace --input .\workspace-export.zip
+```
+
+Export/import task or project CSV files:
+
+```powershell
+uv run --python 3.12 python bottleneck_cli.py export tasks --workspace "Workspace Name" --output .\tasks.csv
+uv run --python 3.12 python bottleneck_cli.py export projects --workspace "Workspace Name" --output .\projects.csv
+uv run --python 3.12 python bottleneck_cli.py import tasks --workspace "Workspace Name" --input .\tasks.csv
+uv run --python 3.12 python bottleneck_cli.py import projects --workspace "Workspace Name" --input .\projects.csv
+```
+
+Task CSV import creates new tasks. Project CSV import updates a project with the same name or creates it if it does not exist. The full workspace importer matches members by email to existing accounts, maps unknown members to the importing server owner, regenerates resource IDs and creates a new workspace named with the suffix `(واردشده)`. It does not import user passwords or create user accounts.
+
+## 8. Data layout
+
+```text
+bottleneck-mvp/
+├── main.py
+├── bottleneck_cli.py
+├── schema.sql
+├── index.html
+├── static/
+├── data/
+│   ├── bottleneck.sqlite3
+│   ├── uploads/
+│   ├── shared/
+│   └── chat_uploads/
+├── backups/
+├── logs/
+│   └── server.log
+├── start.ps1
+└── start.sh
+```
+
+The actual SQLite location can be changed with `BOTTLENECK_DB`; upload, shared and backup directories also have environment overrides. Keep `data/`, `backups/` and any custom storage directories private. They contain team data and uploaded documents.
+
+## 9. Optional HTTPS
+
+For trusted certificates, set both environment variables before starting the launcher:
 
 ```powershell
 $env:BOTTLENECK_SSL_CERTFILE = "C:\certs\bottleneck.crt"
@@ -155,112 +214,29 @@ $env:BOTTLENECK_SSL_KEYFILE = "C:\certs\bottleneck.key"
 .\start.ps1
 ```
 
-The launcher then enables secure session cookies. Use a certificate trusted by the devices that will connect. Do not use an untrusted self-signed certificate for public access. For a public release, use a properly maintained reverse proxy, a valid certificate, access controls, firewall rules and a security review; this package is not a hardened public-internet deployment by itself.
+When both values are present, Uvicorn serves HTTPS and the session cookie is marked Secure. For microphone recording on other LAN devices, use HTTPS; browsers generally block microphone access on ordinary HTTP LAN origins (localhost is a special secure context).
 
-## 10. Backups and restore
+## 10. Version and interface notes
 
-Environment variables:
+- Persian-first RTL UI and Jalali date presentation; dates are stored as ISO Gregorian values in SQLite.
+- Desktop interface scale is approximately 120%; narrow screens return to normal scale.
+- LAN default is port 1939.
+- Creator popup: black professional design, violet `ژلوفن`, white GitHub/Telegram/phone links and five-second GitHub redirect with a stay/close option.
+- Static CSS/JS assets use the `0.9.0` cache version. If an older UI remains after upgrade, use `Ctrl+F5` once.
 
-| Variable | Default | Description |
-|---|---:|---|
-| `BOTTLENECK_BACKUP_INTERVAL_HOURS` | `24` | Automatic backup interval (minimum 1 hour) |
-| `BOTTLENECK_BACKUP_RETENTION` | `14` | Number of recent backups to retain (minimum 2) |
-| `BOTTLENECK_BACKUP_DIR` | `./backups` | Backup archive directory |
+## 11. Security and MVP boundaries
 
-Automatic backups begin after the first account exists. The initial installation owner can create a manual backup from Settings. Each ZIP includes:
+- BottleNeck is intended for a trusted private LAN MVP. Do not expose port 1939 directly to the public Internet or forward it through a router without a separate production-hardening/security review.
+- Server CLI commands run with the local operating-system account's filesystem permissions. Protect the host OS account and project folder.
+- Server-owner setup is performed before the web server starts. Do not register the first user through a browser before running the installer CLI on a clean installation.
+- Workspace packages deliberately exclude credentials, password hashes, session tokens, global configuration and server backups. They include member metadata and workspace content/files.
+- Full backup archives contain the whole installation database and private files. Keep them restricted and store an off-device copy.
+- Restore is offline-only and requires explicit confirmation flags. Test restore on a copy before relying on it for disaster recovery.
+- The server log records operational errors and audit events; it avoids writing request query strings to reduce the chance of logging bearer tokens.
+- Uploaded files are not antivirus-scanned. Use trusted team members and maintain OS-level malware protection.
+- Rich Markdown rendering, remote fonts and some icons rely on external CDNs unless you vendor those assets locally.
+- An independent penetration test and full browser-based visual acceptance test have not been performed for this release.
 
-```text
-manifest.json
-data/
-├── bottleneck.sqlite3
-├── uploads/          # task attachments
-└── shared/           # shared-drive files
-```
+## 12. Creator credit
 
-To restore:
-
-1. Stop BottleNeck.
-2. Copy the current `data/` folder and `backups/` folder somewhere safe before changing anything.
-3. Extract the selected backup ZIP into the BottleNeck installation directory, allowing its `data/` paths to be restored.
-4. Confirm the archive contains `data/bottleneck.sqlite3`, `data/uploads/` and `data/shared/` as appropriate.
-5. Start BottleNeck and verify login, tasks and shared files.
-
-Backups are stored on the same host by default. They are not automatically copied off-device or to cloud storage. Keep a separate off-device copy for disaster recovery. Stop the application before a manual folder-level restore.
-
-## 11. Runtime data layout
-
-```text
-bottleneck-mvp/
-├── main.py
-├── index.html
-├── schema.sql
-├── static/
-│   ├── app.js
-│   └── styles.css
-├── data/                         # created on first start
-│   ├── bottleneck.sqlite3
-│   ├── uploads/
-│   └── shared/
-└── backups/                      # created when first backup is made
-```
-
-SQLite uses WAL mode. The entire `data/` directory is operational data and must not be placed on a public static web path. Do not delete or replace it when installing a new release.
-
-## 12. Configuration reference
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `BOTTLENECK_DB` | `./data/bottleneck.sqlite3` | SQLite database location |
-| `BOTTLENECK_UPLOAD_DIR` | `./data/uploads` | Task attachment storage |
-| `BOTTLENECK_SHARED_DIR` | `<DB parent>/shared` | Shared-drive file storage |
-| `BOTTLENECK_BACKUP_DIR` | `./backups` | Backup ZIP location |
-| `BOTTLENECK_SESSION_DAYS` | `14` | Session lifetime in days |
-| `BOTTLENECK_COOKIE_SECURE` | `0` | Set automatically by launcher for HTTPS; `1` for secure cookies |
-| `BOTTLENECK_HOST` | `0.0.0.0` | Uvicorn bind host |
-| `BOTTLENECK_PORT` | `1939` | HTTP/HTTPS port |
-| `BOTTLENECK_SSL_CERTFILE` | unset | Optional TLS certificate path |
-| `BOTTLENECK_SSL_KEYFILE` | unset | Optional TLS private key path |
-
-## 13. Useful endpoints
-
-- `GET /api/health` — application/version health.
-- `GET /api/bootstrap` — active workspace snapshot.
-- `GET/POST /api/workspaces` and `POST /api/workspaces/switch` — workspace listing/creation/switching.
-- `GET/PUT /api/permissions` — role permission matrix.
-- `GET /api/security` — current account security status.
-- `POST /api/security/totp/setup`, `/enable`, `/disable` — TOTP management.
-- `POST /api/auth/password-reset/request` and `/complete` — password reset.
-- `GET/POST /api/backups` — list/create instance backups (initial installation owner only).
-- `GET /api/backups/{id}/download` — download a backup archive (initial installation owner only).
-- `WS /ws` — authenticated workspace event stream.
-- `GET /api/docs` — interactive API documentation.
-
-## 14. Upgrade from v0.5.0
-
-1. Stop the old server with `Ctrl+C`.
-2. Make a separate copy of the complete `data/` directory, including uploads and shared files.
-3. Extract v0.6.0 into a new directory.
-4. Copy the old `data/` directory into the new `bottleneck-mvp/` directory.
-5. Start with `start.ps1` or `start.sh`.
-
-The v0.6 schema adds the security, multi-workspace permissions, recovery code, email queue and backup tables. Existing users, workspaces, tasks, projects, task assignments, time entries, boards, files, notes and chats remain in the database. The upgrade was integration-tested against a populated v0.5.0 schema. Do not run `schema.sql` manually against the live database; the application applies it on startup.
-
-## 15. Known MVP limitations and security notes
-
-- BottleNeck is designed for a trusted LAN/private network MVP. Do not expose port 1939 directly to the public internet or port-forward it on your router.
-- HTTP is the default. Use HTTPS for any network where traffic cannot be trusted.
-- Login password attempts and public password-reset requests do not have a configurable global IP rate limiter in this MVP. Use it on a trusted network and avoid publishing the login endpoint to the internet.
-- TOTP secrets are stored in the host's SQLite database; protect the entire `data/` directory and host account.
-- Email delivery depends on the SMTP provider and correct environment variables. No email verification or bounce-management system is included.
-- Backups are local to the host unless an operator copies them elsewhere. Protect backup ZIPs: they contain the full database and private files.
-- Shared files are not scanned for malware. Only allow trusted users to upload files and scan files externally if required by your organization.
-- Shared file uploads have a 50 MB cap; task attachments have a 10 MB cap.
-- Rich Markdown preview and some visual assets use external CDNs. Offline browsers retain the Markdown source but may not render a rich preview or remote fonts/icons.
-- Simultaneous edits to the exact same note use last-write-wins behavior; there is no character-level collaborative editor or note revision history.
-- WebSocket delivers workspace events. Presence still refreshes periodically, and updates require a live server connection.
-- Task recurrence and report date boundaries use UTC. Workspace-specific time zones are not configurable.
-- A browser-level automated walkthrough was not available in the build environment; release verification used API integration tests, database migration tests, Python/JavaScript syntax checks and archive integrity checks.
-
-## Creator credit
-
-The application includes a compact popup with **«ساخته شده با عشق توسط ژلوفن»**, Telegram `https://t.me/jelofen1962` and phone link `tel:+989109721962`.
+The application includes a black creator popup with **«ساخته شده با عشق توسط ژلوفن»**, violet creator name, white links to GitHub `https://github.com/Jelofen1962`, Telegram `https://t.me/jelofen1962` and phone `+989109721962`. If the popup remains open, it redirects to GitHub after five seconds; closing/staying cancels the redirect.

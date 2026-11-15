@@ -9,6 +9,10 @@ data/*.sqlite3-shm
 data/*.sqlite3-wal
 data/uploads/
 data/shared/
+data/chat_uploads/
 
 # Runtime backups contain the full workspace database and private files.
 backups/
+
+# Runtime diagnostic logs.
+logs/

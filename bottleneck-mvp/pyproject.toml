@@ -1,7 +1,7 @@
 [project]
 name = "bottleneck-workspace"
-version = "0.6.0"
-description = "BottleNeck Persian RTL team workspace with multi-workspace security, live collaboration and automated operations"
+version = "0.9.0"
+description = "BottleNeck Persian RTL team workspace with instance administration, diagnostics and selective data portability"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "fastapi>=0.115,<1.0",
