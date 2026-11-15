@@ -1,4 +1,4 @@
--- BottleNeck v1.0.0 SQLite schema
+-- BottleNeck v1.1.0 SQLite schema
 -- Existing MVP databases are upgraded automatically when the application starts.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
@@ -434,7 +434,7 @@ CREATE INDEX IF NOT EXISTS idx_email_jobs_status ON notification_email_jobs(stat
 -- BottleNeck v0.7.0: persistent sessions, custom roles, 15-minute join codes and presence cursors.
 CREATE TABLE IF NOT EXISTS workspace_custom_roles (
   id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#8b6bb1', base_role TEXT NOT NULL DEFAULT 'member' CHECK(base_role IN ('admin','member')),
+  name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#4e574e', base_role TEXT NOT NULL DEFAULT 'member' CHECK(base_role IN ('admin','member')),
   created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(workspace_id,name)
 );
 CREATE TABLE IF NOT EXISTS workspace_custom_role_permissions (

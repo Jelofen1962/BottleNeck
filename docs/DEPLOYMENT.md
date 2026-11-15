@@ -1,6 +1,6 @@
 # Deployment guide
 
-BottleNeck v1.0.0 is a stable self-hosted release for a trusted private network. The included launcher is suitable for a small team on one host. Internet-facing deployments need HTTPS and a correctly configured reverse proxy; keep the SQLite database on local storage and run only one Uvicorn process.
+BottleNeck v1.1.0 is a stable self-hosted release for a trusted private network. The included launcher is suitable for a small team on one host. Internet-facing deployments need HTTPS and a correctly configured reverse proxy; keep the SQLite database on local storage and run only one Uvicorn process.
 
 ## Windows LAN installation
 

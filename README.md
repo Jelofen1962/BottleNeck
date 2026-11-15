@@ -4,7 +4,7 @@
 
 <div align="center">
 
-[![Release](https://img.shields.io/badge/release-v1.0.0-C65C42?style=flat-square)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v1.1.0-C65C42?style=flat-square)](CHANGELOG.md)
 [![CI](https://github.com/Jelofen1962/BottleNeck/actions/workflows/ci.yml/badge.svg)](https://github.com/Jelofen1962/BottleNeck/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -22,7 +22,7 @@ BottleNeck brings tasks, projects, team chat, shared notes, concept boards and f
 
 The interface is Persian-first and right-to-left, with English support in technical content. The server uses FastAPI and SQLite, while the frontend stays deliberately small: HTML, CSS and vanilla JavaScript.
 
-> **Project status: stable v1.0.0.** The experimental label ends here. This release is intended for self-hosted use on a trusted private network. Internet-facing deployments need HTTPS, a correctly configured reverse proxy, secure backups and an environment-specific security review; see [Deployment](docs/DEPLOYMENT.md).
+> **Project status: stable v1.1.0.** The experimental label ends here. This release is intended for self-hosted use on a trusted private network. Internet-facing deployments need HTTPS, a correctly configured reverse proxy, secure backups and an environment-specific security review; see [Deployment](docs/DEPLOYMENT.md).
 
 ## What you can do
 
@@ -132,7 +132,7 @@ FastAPI application (single Uvicorn process)
 
 SQLite keeps installation simple and makes a workspace easy to back up. The trade-off matters: run one application process against one local database. Do not add Uvicorn workers or mount the SQLite data directory on a network share. For a larger multi-server deployment, the storage and job architecture needs a separate PostgreSQL-backed release.
 
-More detail lives in [Architecture](docs/ARCHITECTURE.md) and [Deployment](docs/DEPLOYMENT.md).
+More detail lives in [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md) and the [UI design contract](docs/UI-DESIGN-SYSTEM.md).
 
 ## Documentation
 
@@ -142,9 +142,11 @@ More detail lives in [Architecture](docs/ARCHITECTURE.md) and [Deployment](docs/
 | [Installation and upgrade guide](docs/DEPLOYMENT.md) | LAN setup, HTTPS, backups, service management and safe upgrades. |
 | [Server operations](docs/SERVER-OPERATIONS.md) | Owner setup, CLI commands, server roles, restore and data portability. |
 | [Architecture notes](docs/ARCHITECTURE.md) | Application layers, data layout, events and design constraints. |
-| [Release history](CHANGELOG.md) | Changes from the early MVP releases through v1.0.0. |
+| [Release history](CHANGELOG.md) | Changes from the early MVP releases through v1.1.0. |
 | [Publishing guide](docs/PUBLISHING.md) | Push the repository, publish a release and pin it to the maintainer profile. |
 | [Release checklist](docs/RELEASE-CHECKLIST.md) | Checks to run before tagging a new release. |
+| [UI design system](docs/UI-DESIGN-SYSTEM.md) | Shared rules for layout, typography, color, dialogs, chat and feedback. |
+| [UX audit, v1.1.0](docs/UX-AUDIT-v1.1.0.md) | Findings and changes from the latest interface review. |
 | [Roadmap](ROADMAP.md) | Planned work and known gaps. |
 
 ## Configuration and data
@@ -178,7 +180,7 @@ The deployment guide covers reverse proxies, allowed origins, firewall scope and
 
 ## Security at a glance
 
-The application stores password hashes, hashed session tokens and hashed join/reset tokens; session cookies use `HttpOnly` and `SameSite=Lax`, and HTTPS deployments can enable the `Secure` cookie flag. v1.0.0 adds persistent authentication throttles, origin checks for state-changing API requests, security response headers, a Content Security Policy and rotating server logs.
+The application stores password hashes, hashed session tokens and hashed join/reset tokens; session cookies use `HttpOnly` and `SameSite=Lax`, and HTTPS deployments can enable the `Secure` cookie flag. v1.1.0 adds persistent authentication throttles, origin checks for state-changing API requests, security response headers, a Content Security Policy and rotating server logs.
 
 Those controls reduce common risks, but they don't replace network isolation or a security review. BottleNeck does not scan uploaded files for malware, and the project has not undergone an independent penetration test. Read [SECURITY.md](SECURITY.md) before deploying outside a trusted LAN.
 
@@ -191,6 +193,7 @@ Before opening a pull request, run:
 ```bash
 python -m py_compile main.py bottleneck_cli.py
 node --check static/app.js
+python scripts/ui_audit.py
 uv run --group dev --python 3.12 pytest -q
 ```
 

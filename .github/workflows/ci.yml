@@ -45,5 +45,8 @@ jobs:
       - name: Check browser JavaScript syntax
         run: node --check static/app.js
 
+      - name: Audit interface consistency
+        run: python scripts/ui_audit.py
+
       - name: Run tests
         run: uv run --python 3.12 pytest -q

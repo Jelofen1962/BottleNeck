@@ -1,10 +1,10 @@
 # Roadmap
 
-`v1.0.0` marks the first stable public release for self-hosted use on a trusted private network. The roadmap below is a working list, not a promise of dates.
+`v1.1.0` is the current stable release for self-hosted use on a trusted private network. The roadmap below is a working list, not a promise of dates.
 
-## Stable in v1.0.0
+## Stable in v1.1.0
 
-The current release includes task/project workflows, team chat, shared Markdown notes, concept boards, workspace files, role-based access, multiple workspaces, Jalali date presentation, live presence and a separate server operations CLI/GUI.
+The current release includes task/project workflows, team chat, shared Markdown notes, concept boards, workspace files, role-based access, multiple workspaces, Jalali date presentation, live presence, server operations and the shared UI consistency contract documented in `docs/UI-DESIGN-SYSTEM.md`.
 
 ## Candidate work
 

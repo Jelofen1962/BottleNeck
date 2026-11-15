@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.0 · Design system and UX consistency
+
+- Audited the application shell, authentication screens, dialogs, navigation, task views, shared drive, Markdown editor, chat and server administration UI.
+- Added a centralized component token layer for palette, typography, spacing, radii, controls, focus states and responsive behavior; component styles now reference tokens instead of scattered one-off color literals.
+- Standardized button sizes, form fields, page headings, panels, notifications, empty states, chat controls and Markdown surfaces.
+- Replaced remaining native browser `prompt()` and `confirm()` flows with validated in-app dialogs. Dialogs now move focus into the active panel, keep keyboard focus inside it, make the background inert and restore focus when they close.
+- Added proper tab semantics to authentication tabs, `aria-current` navigation state, accessible names for icon-only controls, a skip link and reduced-motion support.
+- Raised undersized text styles to a 10.5px CSS minimum; desktop zoom remains 120%, while narrow screens return to normal scale.
+- Gave success, warning and error notifications distinct visual and assistive-technology announcements.
+- Added an automated UI audit and documented design rules to catch regressions in markup, typography, dialogs, tokens and release versioning.
+- Prioritized explicit autofocus targets, replaced line-break-based empty-state copy with semantic paragraphs, and gave custom role pills their assigned colors.
+- Added separate success/warning/error toast treatments, keyboard-operable authentication tabs, and a mobile navigation drawer with backdrop, inert state, Escape handling and focus return.
+- Moved focus to the destination page heading after navigation and added accessible message-feed and @mention suggestion semantics.
+- Reworked the top bar at compact desktop and phone widths; moved workspace switching into the mobile drawer and kept global search available.
+- Made long dialogs scroll within the available viewport at desktop 120% scale and on phones; verified Escape handling and focus restoration.
+- Rebuilt the phone chat layout so the channel rail, online roster, message feed and composer fit without document-level horizontal overflow.
+- Reserved violet for the Jelofen signature and migrated default custom-role colors to a neutral graphite tone.
+- Expanded the UI audit to check generated button names, dialog sizing, breakpoints, mobile chat constraints and shared color rules.
+
+
 ## v1.0.0 · Stable self-hosted release
 
 - Ended the experimental release track and established v1.0.0 as the stable release for trusted self-hosted network deployments.

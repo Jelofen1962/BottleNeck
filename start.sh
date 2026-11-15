@@ -7,7 +7,7 @@ command -v uv >/dev/null 2>&1 || { echo "uv was not found. Install it from https
 export BOTTLENECK_BACKUP_INTERVAL_HOURS="${BOTTLENECK_BACKUP_INTERVAL_HOURS:-24}"
 export BOTTLENECK_BACKUP_RETENTION="${BOTTLENECK_BACKUP_RETENTION:-14}"
 
-echo "BottleNeck v1.0.0 | preparing Python 3.12 environment..."
+echo "BottleNeck v1.1.0 | preparing Python 3.12 environment..."
 uv sync --python 3.12 --no-dev
 if [[ -n "${BOTTLENECK_SSL_CERTFILE:-}" && -n "${BOTTLENECK_SSL_KEYFILE:-}" ]]; then
   export BOTTLENECK_COOKIE_SECURE=1

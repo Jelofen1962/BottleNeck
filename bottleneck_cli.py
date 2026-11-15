@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BottleNeck instance operations CLI (v1.0.0).
+"""BottleNeck instance operations CLI (v1.1.0).
 
 Run through uv, for example: uv run python bottleneck_cli.py --help
 """

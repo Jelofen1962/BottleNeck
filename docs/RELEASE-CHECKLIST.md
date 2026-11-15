@@ -6,6 +6,7 @@ Use this checklist before tagging a BottleNeck release.
 
 - [ ] Update the version in `pyproject.toml`, `main.py`, `index.html`, `static/app.js`, launch scripts and schema comments.
 - [ ] Run Python compilation and JavaScript syntax checks.
+- [ ] Run `python scripts/ui_audit.py`; resolve every failed rule before tagging.
 - [ ] Run `uv run --group dev --python 3.12 pytest -q`.
 - [ ] Test a fresh installation and a populated upgrade from the previous stable version.
 - [ ] Exercise owner, operator, auditor and regular workspace roles.
@@ -13,10 +14,11 @@ Use this checklist before tagging a BottleNeck release.
 
 ## Browser acceptance
 
-- [ ] Check desktop and narrow-screen layouts.
+- [ ] Check desktop at 120% scale, tablet and narrow-screen layouts.
+- [ ] Check the mobile navigation drawer with keyboard, touch and Escape.
 - [ ] Check RTL, mixed Persian/English text and Jalali date fields.
 - [ ] Check login, remember-me, invitations, chat, uploads, Markdown and WebSocket reconnects.
-- [ ] Check keyboard focus, dialog close behavior and error messages.
+- [ ] Check keyboard focus, authentication tabs, dialog focus restoration, empty states, toast tones and error messages.
 - [ ] Capture screenshots using synthetic data only.
 
 ## Packaging and operations

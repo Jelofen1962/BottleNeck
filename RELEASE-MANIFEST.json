@@ -1,7 +1,7 @@
 {
   "name": "BottleNeck",
-  "version": "1.0.0",
-  "built_at": "2026-11-15T08:28:35.309611+00:00",
+  "version": "1.1.0",
+  "built_at": "2026-11-15T09:48:25.885775+00:00",
   "archive_root": "bottleneck-mvp/",
   "files": [
     {
@@ -12,7 +12,7 @@
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
       "size": 1207,
-      "sha256": "17ab655ceea79ec84fcfd713d7f2ec72132daea11bf924773476fd7dd57075da"
+      "sha256": "29e6c031fbf18fcd92705ff452890e7b7071085ecb8676858a3e2003c5cb0ba2"
     },
     {
       "path": ".github/ISSUE_TEMPLATE/config.yml",
@@ -36,8 +36,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "size": 1014,
-      "sha256": "2e4805a7c284f1fad604ff38ee76d9dd8256bd3a12c4fd7a635117d03237276a"
+      "size": 1097,
+      "sha256": "36f74d52ed81bd8ba758daf9cb98bfc95b816194d62f304f9ca5670fdf575217"
     },
     {
       "path": ".github/workflows/release.yml",
@@ -56,8 +56,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 8149,
-      "sha256": "9a2ac035f9313c948bdf8ec20335f50739133c724552cd66b3645db55bb2c117"
+      "size": 10635,
+      "sha256": "73f31ef595061b5520cf3c3f052937b4c91471a7d5566cd5cfab336cce22ef8e"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -66,8 +66,8 @@
     },
     {
       "path": "CONTRIBUTING.md",
-      "size": 3835,
-      "sha256": "0103e702927c33ac896de36ee8fd17c6c522d1d654370ef62602b5e845f2245c"
+      "size": 3862,
+      "sha256": "f095152ba7db07bf859e4641bc2645b482a15aa482eaf32ebf6b1143b253a88c"
     },
     {
       "path": "HANDBOOK.md",
@@ -81,23 +81,23 @@
     },
     {
       "path": "README.fa.md",
-      "size": 3444,
-      "sha256": "a58ea49ac29a9dc65675cc5e7f7a802afa45e42d6bef4d340c71062597cedc63"
+      "size": 3601,
+      "sha256": "8ab6034a5636649f1980ef12a9f104f1a54e7a52ff40e4900b80dc5399fc4dfd"
     },
     {
       "path": "README.md",
-      "size": 11232,
-      "sha256": "2162f3e550b195972c04d9701de829caf3f831ad9fe397c5b4731c78b4d64d8b"
+      "size": 11539,
+      "sha256": "ccf507222b8a0066aadb446f76f07beba5a15806fa51b1360865f71112937abc"
     },
     {
       "path": "ROADMAP.md",
-      "size": 1533,
-      "sha256": "037d95bbde5e7cf5337265f48725947f6533dec6caeb364150d764274d4ecc29"
+      "size": 1583,
+      "sha256": "e3bb171bc2bc5630645e37fc2c244d672742c9f3cd2d124f3a45ab2064ef99cf"
     },
     {
       "path": "SECURITY.md",
-      "size": 1965,
-      "sha256": "1a3a38447f23b3adb7e3789190319ccca7bf89f824e3112e9323d08d5ebf3da8"
+      "size": 2034,
+      "sha256": "9562218e098d42bfd6544da85274b058ba18f519d9aa02158aceacc674d704db"
     },
     {
       "path": "SUPPORT.md",
@@ -112,7 +112,7 @@
     {
       "path": "bottleneck_cli.py",
       "size": 33627,
-      "sha256": "12dabf597d436ab733fa082e20d203b1a9b9c5118ba78f87eba41c8e68b373b0"
+      "sha256": "663f86cb2f6c66d02fff97d8d7e73067d85804f50e00471830be4e17d29ec8ab"
     },
     {
       "path": "deploy/bottleneck.service",
@@ -132,7 +132,7 @@
     {
       "path": "docs/DEPLOYMENT.md",
       "size": 5229,
-      "sha256": "1926cbbf2414208ca55d813a4a90228d54f456be2355bc041303e3484051ef27"
+      "sha256": "0a6235deacddf2bbd1eea04827aabfcfb37d071b147b6e3b770f40037c4da349"
     },
     {
       "path": "docs/PROJECT-OVERVIEW.md",
@@ -141,18 +141,28 @@
     },
     {
       "path": "docs/PUBLISHING.md",
-      "size": 2764,
-      "sha256": "111698d2bff2b9b1f6699afeddf5dfe60b2f4970fe1ad372164ca0088ab25a24"
+      "size": 2791,
+      "sha256": "f812a9d3b4871f79417865521b1b1461448ed3b4b26b5973a484837bf161201a"
     },
     {
       "path": "docs/RELEASE-CHECKLIST.md",
-      "size": 1650,
-      "sha256": "cb3dff44de0600d42ca6640ff2ef66eb62f6ea2c62c6f19e6f7945d49c8d2eba"
+      "size": 1879,
+      "sha256": "f6e2f9608b21097272f3de1bbe3444db25ffd9cccd38d23c79183d3252727a1f"
     },
     {
       "path": "docs/SERVER-OPERATIONS.md",
       "size": 3373,
       "sha256": "52d784ff1d88e89f0f1495b45ba2dc5877f88c2c1d263ddd6b54307c9113040c"
+    },
+    {
+      "path": "docs/UI-DESIGN-SYSTEM.md",
+      "size": 8366,
+      "sha256": "c4f8d016b5e873292b252eef9fb57ae5c8b96cc4468d39dfc49223df17e89f1d"
+    },
+    {
+      "path": "docs/UX-AUDIT-v1.1.0.md",
+      "size": 7564,
+      "sha256": "797becdeb25d5041056fbc88dad1198c413f934e0f81ae383c9b528b0bc3e2d7"
     },
     {
       "path": "docs/assets/README.md",
@@ -162,32 +172,37 @@
     {
       "path": "docs/assets/readme-hero.svg",
       "size": 6495,
-      "sha256": "b1cde4f3e2b380769f1950d41bfc32f12312752438961bed87c05b286a91918e"
+      "sha256": "86ee262834c6c6494fe8556398d37ea69b53a64f7c6fb331bd82689e5acc37e3"
     },
     {
       "path": "index.html",
-      "size": 16728,
-      "sha256": "d6c8ce79e5ef3f3a3c814048fa3f0a5ea8a3c36be108bc59c4465e9b74dad9ed"
+      "size": 18463,
+      "sha256": "72e5ed0574641270c3dcab2d5ea223fd1e51301570eefb3e44247794818edff3"
     },
     {
       "path": "main.py",
-      "size": 264988,
-      "sha256": "9a051cf1f7e02b09d7de4cb3cd866fc90c0e58d7437518294aebec9d61d95770"
+      "size": 265078,
+      "sha256": "4703a0e908e325102e2c9757905644491e02b0ad35785599979f3a55f898f9e0"
     },
     {
       "path": "pyproject.toml",
       "size": 916,
-      "sha256": "2858d259dbf42ad75e1b023b14659ec701bc05deeb445e05435d3a616d3da9d6"
+      "sha256": "bc7561f7cee18840c9c4812d25a1fcb1916198cc08d8247df555bc7654e1f975"
     },
     {
       "path": "schema.sql",
       "size": 22443,
-      "sha256": "9f88e30ff4ad22378f4de29ea4d5fbe7bff26ea7c0c125e695e0ef7e63de718c"
+      "sha256": "06b3184d33c638d8a26a46f9dc3d2c99888a9334847a3bdde2f4378530097857"
     },
     {
       "path": "scripts/build_release.py",
       "size": 4054,
       "sha256": "a9d197c39e26002628b88ec31c20ab25357ed5ea7d079d16fe5d939f7d66249e"
+    },
+    {
+      "path": "scripts/ui_audit.py",
+      "size": 7902,
+      "sha256": "f58f1a96918f61531bd4150321efb6ef4d11d13081f451200103a48bf7d81ab9"
     },
     {
       "path": "scripts/verify_release.py",
@@ -197,22 +212,27 @@
     {
       "path": "start.ps1",
       "size": 1831,
-      "sha256": "28c2854f47ebaf24af2f1c8430ef99f1515802356b341f6aed8f038558a70d17"
+      "sha256": "85fe57e62d217248e5ecc3b49244566755e05ff148099b17d673bab8a178d377"
     },
     {
       "path": "start.sh",
       "size": 1065,
-      "sha256": "dcc652cb3d0d9d54971beeeb4f7f2c424f86ee233115aa1d4c64788b5d02d5a6"
+      "sha256": "472074aab898039f92245d1e8ee30ffc339e5b271cebc26abfe3ddfbb1a5bf45"
     },
     {
       "path": "static/app.js",
-      "size": 233443,
-      "sha256": "f6e812959002d856ccb7b58065ca25e874675ef63ad84ee084175263043de732"
+      "size": 250065,
+      "sha256": "37ea9d0044e41b66d6b2218a95262512a20487238f3419345d5e17a676b9bf6a"
+    },
+    {
+      "path": "static/design-system.css",
+      "size": 21769,
+      "sha256": "ab1a06e3df32e88c6ab7657b000d4f72c5585273c2e04f45b51d2c742ce2cd36"
     },
     {
       "path": "static/styles.css",
-      "size": 92152,
-      "sha256": "897a928dac226b08085f3b41e8b949aee1eb4b8dcaa8979803bd1a57c28d0450"
+      "size": 95978,
+      "sha256": "031ebdb8ecb48b7af113ae3e4c98947d7d2eb6136f793506568d7e1f4a18ef54"
     },
     {
       "path": "tests/conftest.py",
@@ -222,7 +242,7 @@
     {
       "path": "tests/test_release_smoke.py",
       "size": 3163,
-      "sha256": "b835eccc418e1f8f6aee66692b43ab61a1e61f53ff05986294a530ce181ba3b4"
+      "sha256": "02e9f8df09d4ca986faae8d8ec4785d1c7ae520a0f4bd5b25b79587924e287b7"
     }
   ]
 }

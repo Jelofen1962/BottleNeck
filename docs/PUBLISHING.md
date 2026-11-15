@@ -16,7 +16,7 @@ From the extracted project root:
 git init
 git add .
 git status
-git commit -m "release: BottleNeck v1.0.0"
+git commit -m "release: BottleNeck v1.1.0"
 git branch -M main
 git remote add origin https://github.com/Jelofen1962/BottleNeck.git
 git push -u origin main
@@ -29,11 +29,12 @@ Review `git status` before the commit. Runtime data must never enter the reposit
 After the main branch is on GitHub:
 
 ```bash
+python scripts/ui_audit.py
 python scripts/build_release.py
-python scripts/verify_release.py dist/BottleNeck-v1.0.0-production.zip
+python scripts/verify_release.py dist/BottleNeck-v1.1.0-production.zip
 
-git tag -a v1.0.0 -m "BottleNeck v1.0.0"
-git push origin v1.0.0
+git tag -a v1.1.0 -m "BottleNeck v1.1.0"
+git push origin v1.1.0
 ```
 
 The tag workflow runs the checks and attaches the source ZIP and SHA-256 sidecar to the GitHub release. You can also upload the two files from `dist/` manually through the Releases page.
@@ -53,4 +54,4 @@ Once the public repository exists, open the GitHub profile for [Jelofen1962](htt
 
 ## Replace the README hero with a real screenshot
 
-The existing `docs/assets/readme-hero.svg` is an illustration. Capture the actual v1.0.0 UI using synthetic data, save a wide screenshot as `docs/assets/readme-hero.webp`, and change the image path at the top of `README.md`. Remove personal names, email addresses, private chat and real workspace files before committing it.
+The existing `docs/assets/readme-hero.svg` is an illustration. Capture the actual v1.1.0 UI using synthetic data, save a wide screenshot as `docs/assets/readme-hero.webp`, and change the image path at the top of `README.md`. Remove personal names, email addresses, private chat and real workspace files before committing it.

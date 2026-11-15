@@ -45,7 +45,7 @@ COOKIE_NAME = "bottleneck_session"
 SESSION_DAYS = int(os.getenv("BOTTLENECK_SESSION_DAYS", "14"))
 COOKIE_SECURE = os.getenv("BOTTLENECK_COOKIE_SECURE", "0") == "1"
 PBKDF2_ITERATIONS = 310_000
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_AVATAR_BYTES = 3 * 1024 * 1024
 AVATAR_DIR = UPLOAD_DIR / "avatars"
@@ -221,10 +221,11 @@ def init_db() -> None:
         conn.executescript("""
           CREATE TABLE IF NOT EXISTS workspace_custom_roles (
             id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-            name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#8b6bb1', base_role TEXT NOT NULL DEFAULT 'member' CHECK(base_role IN ('admin','member')),
+            name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#4e574e', base_role TEXT NOT NULL DEFAULT 'member' CHECK(base_role IN ('admin','member')),
             created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL,
             UNIQUE(workspace_id,name)
           );
+          UPDATE workspace_custom_roles SET color='#4e574e' WHERE lower(color)='#8b6bb1';
           CREATE TABLE IF NOT EXISTS workspace_custom_role_permissions (
             workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             role_id TEXT NOT NULL REFERENCES workspace_custom_roles(id) ON DELETE CASCADE,
@@ -526,7 +527,7 @@ class JoinCodeAcceptInput(BaseModel):
 
 class CustomRoleCreateInput(BaseModel):
     name: str = Field(min_length=2, max_length=40)
-    color: str = Field(default="#8b6bb1", pattern=r"^#[0-9a-fA-F]{6}$")
+    color: str = Field(default="#4e574e", pattern=r"^#[0-9a-fA-F]{6}$")
     base_role: str = "member"
     permissions: list[str] = Field(default_factory=list, max_length=80)
 
@@ -3596,7 +3597,7 @@ def _server_setting_int(key: str, default: int, minimum: int, maximum: int) -> i
 
 
 # ---------------------------------------------------------------------------
-# v1.0.0 — dedicated server administration, diagnostics and data portability.
+# v1.1.0 — dedicated server administration, diagnostics and data portability.
 # Server administration is intentionally separate from workspace settings.
 # ---------------------------------------------------------------------------
 

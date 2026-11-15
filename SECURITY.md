@@ -2,7 +2,7 @@
 
 ## Supported release
 
-Security fixes target the current stable release, `v1.0.x`. Upgrade to the latest stable patch before reporting an issue where possible.
+Security fixes target the current stable release, `v1.1.x`. Upgrade to the latest stable patch before reporting an issue where possible.
 
 ## Reporting a vulnerability
 
@@ -19,12 +19,12 @@ The maintainer will acknowledge the report and coordinate a fix before public di
 
 ## Deployment guidance
 
-BottleNeck v1.0.0 targets self-hosted deployments on a trusted network. Before exposing it to the public Internet, configure HTTPS, secure cookies, an explicit allowed-origin list and a restrictive firewall; keep the database and uploaded files outside public web roots.
+BottleNeck v1.1.0 targets self-hosted deployments on a trusted network. Before exposing it to the public Internet, configure HTTPS, secure cookies, an explicit allowed-origin list and a restrictive firewall; keep the database and uploaded files outside public web roots.
 
 The application does not include malware scanning for uploaded files, and this release has not received an independent penetration test. Treat uploaded files and workspace exports as untrusted input. Keep off-device backups and test restore procedures.
 
-## Security controls in v1.0.0
+## Security controls in v1.1.0
 
-The application uses PBKDF2-HMAC-SHA256 password hashing, hashed session and join tokens, `HttpOnly`/`SameSite` session cookies, optional `Secure` cookies under HTTPS, persistent authentication throttles, origin checks on state-changing API requests, CSP/security response headers, permission checks in API handlers and rotating server logs.
+The application uses PBKDF2-HMAC-SHA256 password hashing, hashed session and join tokens, `HttpOnly`/`SameSite` session cookies, optional `Secure` cookies under HTTPS, persistent authentication throttles, origin checks on state-changing API requests, CSP/security response headers, permission checks in API handlers, rotating server logs and the v1.1.0 UI safety checks. The UI audit is not a security scanner.
 
 These controls are not a substitute for a deployment review. For configuration details, read [Deployment](docs/DEPLOYMENT.md).

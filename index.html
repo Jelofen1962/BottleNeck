@@ -7,13 +7,15 @@
   <meta name="referrer" content="same-origin" />
   <meta name="author" content="ژلوفن" />
   <meta name="description" content="BottleNeck؛ فضای کاری مشترک برای مدیریت کارها، تیم‌ها و پروژه‌ها." />
-  <title>BottleNeck | فضای کاری مشترک تیم</title>
+  <title>BottleNeck v1.1.0 | فضای کاری مشترک تیم</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=1.0.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.1.0" />
+  <link rel="stylesheet" href="/static/design-system.css?v=1.1.0" />
 </head>
 <body>
+  <a class="skip-link" href="#pageContent">رفتن به محتوای اصلی</a>
   <div id="authScreen" class="auth-screen">
     <aside class="auth-aside">
       <a class="brand brand-auth" href="/"><span class="brand-mark"><i data-lucide="waypoints"></i></span><span class="brand-name">Bottle<span>Neck</span><small>TEAM WORKSPACE</small></span></a>
@@ -23,13 +25,13 @@
         <p>کارها را ثبت کنید، مسئولیت‌ها را روشن کنید و در یک فضای مشترک تا پایان کار پیش بروید.</p>
         <div class="auth-stamp"><i data-lucide="route"></i><span>یک مسیر روشن برای هر کار</span></div>
       </div>
-      <div class="auth-aside-foot"><span>نسخه ۰.۹.۰</span><span>فضای کاری فارسی و راست‌چین</span></div>
+      <div class="auth-aside-foot"><span>نسخه ۱.۱.۰</span><span>فضای کاری فارسی و راست‌چین</span></div>
     </aside>
     <main class="auth-main">
       <div class="auth-mobile-brand"><span class="brand-mark"><i data-lucide="waypoints"></i></span><span class="brand-name">Bottle<span>Neck</span></span></div>
       <section class="auth-card">
-        <div class="auth-tabs" role="tablist"><button class="auth-tab active" data-auth-tab="login">ورود به حساب</button><button class="auth-tab" data-auth-tab="register">ساخت فضای کار</button></div>
-        <div id="loginPanel" class="auth-panel">
+        <div class="auth-tabs" role="tablist" aria-label="انتخاب روش ورود"><button type="button" class="auth-tab active" id="loginTab" role="tab" aria-controls="loginPanel" aria-selected="true" tabindex="0" data-auth-tab="login">ورود به حساب</button><button type="button" class="auth-tab" id="registerTab" role="tab" aria-controls="registerPanel" aria-selected="false" tabindex="-1" data-auth-tab="register">ساخت فضای کار</button></div>
+        <div id="loginPanel" class="auth-panel" role="tabpanel" aria-labelledby="loginTab" aria-hidden="false">
           <p class="eyebrow">خوش برگشتی</p><h2>ادامه کارها از همین‌جا</h2><p class="auth-lead">برای ورود، ایمیل و گذرواژه حساب خود را وارد کنید.</p><p class="invite-hint hidden" id="joinLoginHint">برای پیوستن به این فضا، با حساب فعلی خود وارد شوید؛ حساب تازه‌ای ساخته نمی‌شود.</p>
           <form id="loginForm" class="form-stack">
             <label class="field"><span>ایمیل</span><input type="email" id="loginEmail" autocomplete="username" required placeholder="name@company.com" /></label>
@@ -37,9 +39,9 @@
             <label class="remember-row"><input type="checkbox" id="rememberMe" /><span><strong>مرا به خاطر بسپار</strong><small>این دستگاه تا ۳۰ روز وارد می‌ماند.</small></span></label>
             <button class="primary-button wide-button" type="submit">ورود به فضای کار <i data-lucide="arrow-left"></i></button>
           </form>
-          <p class="auth-footnote">حساب ندارید؟ <button class="text-button" data-switch-auth="register">ساخت فضای کاری جدید</button> · <button class="text-button" data-forgot-password>بازیابی گذرواژه</button></p>
+          <p class="auth-footnote">حساب ندارید؟ <button type="button" class="text-button" data-switch-auth="register">ساخت فضای کاری جدید</button> · <button type="button" class="text-button" data-forgot-password>بازیابی گذرواژه</button></p>
         </div>
-        <div id="registerPanel" class="auth-panel hidden">
+        <div id="registerPanel" class="auth-panel hidden" role="tabpanel" aria-labelledby="registerTab" aria-hidden="true">
           <p class="eyebrow">شروع یک فضای مشترک</p><h2>حساب و فضای کارتان را بسازید</h2><p class="auth-lead">سازنده فضای کار، مالک آن می‌شود و می‌تواند هم‌تیمی‌ها را دعوت کند.</p>
           <form id="registerForm" class="form-stack">
             <label class="field"><span>نام شما</span><input type="text" id="registerName" required minlength="2" maxlength="80" autocomplete="name" placeholder="نام و نام خانوادگی" /></label>
@@ -50,78 +52,79 @@
             <p class="invite-hint hidden" id="inviteHint">با این ثبت‌نام به فضای کاری دعوت‌شده می‌پیوندید. نام فضای کار در این حالت لازم نیست.</p>
             <button class="primary-button wide-button" type="submit">ساخت حساب و ورود <i data-lucide="arrow-left"></i></button>
           </form>
-          <p class="auth-footnote">از قبل حساب دارید؟ <button class="text-button" data-switch-auth="login">ورود به حساب</button></p>
+          <p class="auth-footnote">از قبل حساب دارید؟ <button type="button" class="text-button" data-switch-auth="login">ورود به حساب</button></p>
         </div>
         <p class="auth-error hidden" id="authError" role="alert"></p>
       </section>
       <p class="auth-security"><i data-lucide="shield-check"></i> گذرواژه به‌صورت هش‌شده ذخیره می‌شود؛ داده‌ها روی سرور میزبان نگهداری می‌شوند.</p>
-      <button class="credit-link auth-credit" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button>
+      <button type="button" class="credit-link auth-credit" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button>
     </main>
   </div>
 
   <div class="app-shell hidden" id="appShell">
-    <aside class="sidebar" id="sidebar">
-      <a class="brand" href="#overview"><span class="brand-mark"><i data-lucide="waypoints"></i></span><span class="brand-name">Bottle<span>Neck</span><small>TEAM WORKSPACE</small></span></a>
+    <aside class="sidebar" id="sidebar" role="navigation" aria-label="ناوبری اصلی">
+      <a class="brand" href="#pageContent" aria-label="BottleNeck، رفتن به نمای اصلی"><span class="brand-mark"><i data-lucide="waypoints"></i></span><span class="brand-name">Bottle<span>Neck</span><small>TEAM WORKSPACE</small></span></a>
       <div class="workspace-switcher"><span class="workspace-avatar" id="workspaceInitial">ب</span><span class="workspace-meta"><strong id="workspaceNameLabel">فضای کاری</strong><small id="workspaceRoleLabel">فضای مشترک</small></span><i data-lucide="users" class="switch-icon"></i></div>
       <div class="nav-group"><p class="nav-label">فضای کار</p>
-        <button class="nav-item active" data-page="overview"><i data-lucide="layout-dashboard"></i><span>نمای کلی</span><kbd>۱</kbd></button>
-        <button class="nav-item" data-page="my-tasks"><i data-lucide="list-todo"></i><span>کارهای من</span><b class="nav-count" id="myTaskCount">۰</b></button>
-        <button class="nav-item" data-page="all-tasks"><i data-lucide="layers-3"></i><span>همه کارها</span></button>
-        <button class="nav-item" data-page="board"><i data-lucide="kanban-square"></i><span>برد کانبان</span></button>
-        <button class="nav-item" data-page="calendar"><i data-lucide="calendar-days"></i><span>تقویم</span></button>
+        <button type="button" class="nav-item active" data-page="overview"><i data-lucide="layout-dashboard"></i><span>نمای کلی</span><kbd>۱</kbd></button>
+        <button type="button" class="nav-item" data-page="my-tasks"><i data-lucide="list-todo"></i><span>کارهای من</span><b class="nav-count" id="myTaskCount">۰</b></button>
+        <button type="button" class="nav-item" data-page="all-tasks"><i data-lucide="layers-3"></i><span>همه کارها</span></button>
+        <button type="button" class="nav-item" data-page="board"><i data-lucide="kanban-square"></i><span>برد کانبان</span></button>
+        <button type="button" class="nav-item" data-page="calendar"><i data-lucide="calendar-days"></i><span>تقویم</span></button>
       </div>
       <div class="nav-group"><p class="nav-label">مدیریت</p>
-        <button class="nav-item" data-page="projects"><i data-lucide="folder-kanban"></i><span>پروژه‌ها</span></button>
-        <button class="nav-item" data-page="teams"><i data-lucide="users-round"></i><span>تیم‌ها و اعضا</span></button>
-        <button class="nav-item" data-page="activity"><i data-lucide="activity"></i><span>گزارش فعالیت</span></button>
-        <button class="nav-item" data-page="reports"><i data-lucide="chart-no-axes-combined"></i><span>گزارش‌های عملکرد</span></button>
-        <button class="nav-item" data-page="approvals"><i data-lucide="clipboard-check"></i><span>درخواست‌های تأیید</span><b class="nav-count" id="approvalCount">۰</b></button>
+        <button type="button" class="nav-item" data-page="projects"><i data-lucide="folder-kanban"></i><span>پروژه‌ها</span></button>
+        <button type="button" class="nav-item" data-page="teams"><i data-lucide="users-round"></i><span>تیم‌ها و اعضا</span></button>
+        <button type="button" class="nav-item" data-page="activity"><i data-lucide="activity"></i><span>گزارش فعالیت</span></button>
+        <button type="button" class="nav-item" data-page="reports"><i data-lucide="chart-no-axes-combined"></i><span>گزارش‌های عملکرد</span></button>
+        <button type="button" class="nav-item" data-page="approvals"><i data-lucide="clipboard-check"></i><span>درخواست‌های تأیید</span><b class="nav-count" id="approvalCount">۰</b></button>
       </div>
       <div class="nav-group"><p class="nav-label">ابزارهای کار</p>
-        <button class="nav-item" data-page="recurring"><i data-lucide="repeat"></i><span>کارهای تکرارشونده</span></button>
-        <button class="nav-item" data-page="templates"><i data-lucide="copy-check"></i><span>قالب‌های کار</span></button>
+        <button type="button" class="nav-item" data-page="recurring"><i data-lucide="repeat"></i><span>کارهای تکرارشونده</span></button>
+        <button type="button" class="nav-item" data-page="templates"><i data-lucide="copy-check"></i><span>قالب‌های کار</span></button>
       </div>
       <div class="nav-group"><p class="nav-label">فضای مشترک</p>
-        <button class="nav-item" data-page="shared-board"><i data-lucide="layout-grid"></i><span>برد ایده‌های مشترک</span></button>
-        <button class="nav-item" data-page="shared-drive"><i data-lucide="folder-open"></i><span>فایل‌ها و پوشه‌ها</span></button>
-        <button class="nav-item" data-page="shared-notes"><i data-lucide="notebook-pen"></i><span>یادداشت‌های Markdown</span></button>
-        <button class="nav-item" data-page="team-chat"><i data-lucide="messages-square"></i><span>گفت‌وگوی تیمی</span></button>
+        <button type="button" class="nav-item" data-page="shared-board"><i data-lucide="layout-grid"></i><span>برد ایده‌های مشترک</span></button>
+        <button type="button" class="nav-item" data-page="shared-drive"><i data-lucide="folder-open"></i><span>فایل‌ها و پوشه‌ها</span></button>
+        <button type="button" class="nav-item" data-page="shared-notes"><i data-lucide="notebook-pen"></i><span>یادداشت‌های Markdown</span></button>
+        <button type="button" class="nav-item" data-page="team-chat"><i data-lucide="messages-square"></i><span>گفت‌وگوی تیمی</span></button>
       </div>
       <div class="nav-group"><p class="nav-label">راهنما</p>
-        <button class="nav-item" data-page="handbook"><i data-lucide="book-open-text"></i><span>راهنمای استفاده</span></button>
-        <button class="nav-item" data-page="settings"><i data-lucide="settings-2"></i><span>تنظیمات</span></button>
+        <button type="button" class="nav-item" data-page="handbook"><i data-lucide="book-open-text"></i><span>راهنمای استفاده</span></button>
+        <button type="button" class="nav-item" data-page="settings"><i data-lucide="settings-2"></i><span>تنظیمات</span></button>
       </div>
       <div class="nav-group hidden" id="serverAdminNav"><p class="nav-label">مدیریت نصب</p>
-        <button class="nav-item" data-page="server-admin"><i data-lucide="server-cog"></i><span>مدیریت سرور</span><b class="nav-count">CLI</b></button>
+        <button type="button" class="nav-item" data-page="server-admin"><i data-lucide="server-cog"></i><span>مدیریت سرور</span><b class="nav-count">CLI</b></button>
       </div>
       <div class="sidebar-bottom">
-        <div class="focus-note"><span class="focus-icon"><i data-lucide="crosshair"></i></span><strong>یک کار، یک قدم</strong><p>وقتی قدم بعدی روشن باشد، شروع‌کردن ساده‌تر می‌شود.</p><button id="focusButton">دیدن کارهای من <i data-lucide="arrow-left"></i></button></div>
-        <button class="credit-link" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button>
-        <div class="profile-row"><span class="avatar avatar-dark" id="profileAvatar">؟</span><span class="profile-meta"><strong id="profileName">کاربر</strong><small id="profileRole">عضو تیم</small></span><button class="icon-button" id="logoutButton" title="خروج از حساب" aria-label="خروج"><i data-lucide="log-out"></i></button></div>
+        <div class="focus-note"><span class="focus-icon"><i data-lucide="crosshair"></i></span><strong>یک کار، یک قدم</strong><p>وقتی قدم بعدی روشن باشد، شروع‌کردن ساده‌تر می‌شود.</p><button type="button" id="focusButton">دیدن کارهای من <i data-lucide="arrow-left"></i></button></div>
+        <button type="button" class="credit-link" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button>
+        <div class="profile-row"><span class="avatar avatar-dark" id="profileAvatar">؟</span><span class="profile-meta"><strong id="profileName">کاربر</strong><small id="profileRole">عضو تیم</small></span><button type="button" class="icon-button" id="logoutButton" title="خروج از حساب" aria-label="خروج"><i data-lucide="log-out"></i></button></div>
       </div>
     </aside>
+    <button type="button" class="mobile-nav-backdrop" id="mobileNavBackdrop" aria-label="بستن منو" aria-hidden="true" tabindex="-1"></button>
 
     <main class="main-area">
-      <header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" id="mobileMenu" aria-label="بازکردن منو"><i data-lucide="menu"></i></button><div class="breadcrumb"><span>BottleNeck</span><i data-lucide="chevron-left"></i><strong id="breadcrumbCurrent">نمای کلی</strong></div></div>
-        <div class="topbar-actions"><select id="workspaceSelect" class="workspace-select" aria-label="انتخاب فضای کاری"><option value="">فضای کاری</option></select><label class="global-search"><i data-lucide="search"></i><input id="globalSearch" type="search" placeholder="جست‌وجوی کارها و پروژه‌ها..." /><kbd>Ctrl K</kbd></label><button class="online-members-button" id="onlineMembersButton" title="اعضای آنلاین"><span class="online-presence-dot"></span><strong id="onlineCount">۰</strong><span>آنلاین</span></button><button class="icon-button notification-button" id="notificationButton" title="اعلان‌ها"><i data-lucide="bell"></i><b class="notification-dot hidden" id="notificationDot"></b></button><button class="icon-button" id="helpButton" title="شروع راهنما"><i data-lucide="circle-help"></i></button><button class="create-button" id="globalCreate"><i data-lucide="plus"></i><span>کار جدید</span></button></div>
+      <header class="topbar"><div class="topbar-left"><button type="button" class="icon-button mobile-menu" id="mobileMenu" aria-label="بازکردن منو" aria-controls="sidebar" aria-expanded="false"><i data-lucide="menu"></i></button><div class="breadcrumb"><span>BottleNeck</span><i data-lucide="chevron-left"></i><strong id="breadcrumbCurrent">نمای کلی</strong></div></div>
+        <div class="topbar-actions"><select id="workspaceSelect" class="workspace-select" aria-label="انتخاب فضای کاری"><option value="">فضای کاری</option></select><label class="global-search"><i data-lucide="search"></i><input id="globalSearch" type="search" aria-label="جست‌وجوی کارها و پروژه‌ها" placeholder="جست‌وجوی کارها و پروژه‌ها..." /><kbd>Ctrl K</kbd></label><button type="button" class="online-members-button" id="onlineMembersButton" title="اعضای آنلاین" aria-label="نمایش اعضای آنلاین" aria-haspopup="dialog"><span class="online-presence-dot"></span><strong id="onlineCount">۰</strong><span>آنلاین</span></button><button type="button" class="icon-button notification-button" id="notificationButton" title="اعلان‌ها" aria-label="اعلان‌ها" aria-haspopup="dialog"><i data-lucide="bell"></i><b class="notification-dot hidden" id="notificationDot"></b></button><button type="button" class="icon-button" id="helpButton" title="شروع راهنما" aria-label="شروع راهنما" aria-haspopup="dialog"><i data-lucide="circle-help"></i></button><button type="button" class="create-button" id="globalCreate"><i data-lucide="plus"></i><span>کار جدید</span></button></div>
       </header>
-      <div class="page-content" id="pageContent"></div>
-      <footer class="app-footer"><span>BottleNeck · v1.0.0</span><button class="credit-link" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button></footer>
+      <div class="page-content" id="pageContent" tabindex="-1"></div>
+      <footer class="app-footer"><span>BottleNeck · v1.1.0</span><button type="button" class="credit-link" data-open-credit>ساخته شده با عشق توسط <strong>ژلوفن</strong></button></footer>
     </main>
   </div>
 
   <div class="remote-cursor-layer" id="remoteCursorLayer" aria-hidden="true"></div>
 
-  <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true"><section class="modal" id="modalPanel" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-header"><div><p class="eyebrow" id="modalEyebrow">BottleNeck</p><h2 id="modalTitle">پنجره</h2></div><button class="icon-button" data-close-modal aria-label="بستن"><i data-lucide="x"></i></button></div><div id="modalBody"></div></section></div>
+  <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true"><section class="modal" id="modalPanel" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-header"><div><p class="eyebrow" id="modalEyebrow">BottleNeck</p><h2 id="modalTitle">پنجره</h2></div><button type="button" class="icon-button" data-close-modal aria-label="بستن"><i data-lucide="x"></i></button></div><div id="modalBody"></div></section></div>
 
-  <div class="tour-backdrop hidden" id="tourBackdrop"><div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tourTitle"><div class="tour-topline"><span class="tour-kicker"><i data-lucide="compass"></i> راهنمای شروع BottleNeck</span><button class="icon-button" id="tourClose" aria-label="بستن راهنما"><i data-lucide="x"></i></button></div><div class="tour-progress" id="tourProgress"></div><p class="eyebrow" id="tourStepLabel">گام ۱ از ۷</p><h2 id="tourTitle">به فضای کاری خوش آمدید</h2><p id="tourText"></p><div class="tour-footer"><button class="text-button" id="tourSkip">فعلاً رد شو</button><div><button class="secondary-button" id="tourPrev">قبلی</button><button class="primary-button" id="tourNext">بعدی <i data-lucide="arrow-left"></i></button></div></div></div></div>
+  <div class="tour-backdrop hidden" id="tourBackdrop" aria-hidden="true"><div class="tour-card" id="tourCard" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="tourTitle"><div class="tour-topline"><span class="tour-kicker"><i data-lucide="compass"></i> راهنمای شروع BottleNeck</span><button type="button" class="icon-button" id="tourClose" aria-label="بستن راهنما"><i data-lucide="x"></i></button></div><div class="tour-progress" id="tourProgress"></div><p class="eyebrow" id="tourStepLabel">گام ۱ از ۷</p><h2 id="tourTitle">به فضای کاری خوش آمدید</h2><p id="tourText"></p><div class="tour-footer"><button type="button" class="text-button" id="tourSkip">فعلاً رد شو</button><div><button type="button" class="secondary-button" id="tourPrev">قبلی</button><button type="button" class="primary-button" id="tourNext">بعدی <i data-lucide="arrow-left"></i></button></div></div></div></div>
 
-  <div class="modal-backdrop credit-backdrop" id="creditBackdrop" aria-hidden="true"><section class="credit-modal" role="dialog" aria-modal="true" aria-labelledby="creditTitle"><div class="credit-modal-top"><span class="credit-mark"><i data-lucide="sparkles"></i></span><span class="credit-overline">CREATOR SIGNATURE <b>·</b> BOTTLENECK</span><button class="credit-close" data-close-credit aria-label="بستن"><i data-lucide="x"></i></button></div><div class="credit-modal-body"><p class="credit-kicker">A LITTLE LOVE, A LOT OF CRAFT</p><h2 id="creditTitle">ساخته شده با عشق<br />توسط <span class="jelofen-name">ژلوفن</span></h2><p class="credit-message">برای آدم‌هایی که دوست دارند ایده‌ها را به کارهای واقعی تبدیل کنند. ساخته‌شده با دقت، کنجکاوی و کمی رنگ اضافه.</p><div class="credit-actions"><a class="credit-social-link" href="https://github.com/Jelofen1962" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i><span><strong>GitHub</strong><small>مشاهده پروژه‌ها و کدها</small></span><i data-lucide="arrow-up-left" class="credit-arrow"></i></a><a class="credit-social-link" href="https://t.me/jelofen1962" target="_blank" rel="noopener noreferrer"><i data-lucide="send"></i><span><strong>Telegram</strong><small>t.me/jelofen1962</small></span><i data-lucide="arrow-up-left" class="credit-arrow"></i></a><a class="credit-social-link" href="tel:+989109721962"><i data-lucide="phone"></i><span><strong>تماس</strong><small dir="ltr">+98 910 972 1962</small></span><i data-lucide="arrow-up-left" class="credit-arrow"></i></a></div><div class="credit-countdown-wrap"><div class="credit-countdown-line"><span>بازدید از صفحه سازنده</span><strong id="creditCountdown">در ۵ ثانیه به گیت‌هاب هدایت می‌شوید</strong></div><div class="credit-progress"><span id="creditProgress"></span></div><button type="button" class="credit-stay" data-close-credit>فعلاً همین‌جا می‌مانم</button></div></div><div class="credit-modal-foot"><span>© JELofEN</span><span>BottleNeck · v1.0.0</span></div></section></div>
+  <div class="modal-backdrop credit-backdrop" id="creditBackdrop" aria-hidden="true"><section class="credit-modal" id="creditModal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="creditTitle"><div class="credit-modal-top"><span class="credit-mark"><i data-lucide="sparkles"></i></span><span class="credit-overline">CREATOR SIGNATURE <b>·</b> BOTTLENECK</span><button type="button" class="credit-close" data-close-credit aria-label="بستن"><i data-lucide="x"></i></button></div><div class="credit-modal-body"><p class="credit-kicker">A LITTLE LOVE, A LOT OF CRAFT</p><h2 id="creditTitle">ساخته شده با عشق<br />توسط <span class="jelofen-name">ژلوفن</span></h2><p class="credit-message">برای آدم‌هایی که دوست دارند ایده‌ها را به کارهای واقعی تبدیل کنند. ساخته‌شده با دقت، کنجکاوی و کمی رنگ اضافه.</p><div class="credit-actions"><a class="credit-social-link" href="https://github.com/Jelofen1962" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i><span><strong>GitHub</strong><small>مشاهده پروژه‌ها و کدها</small></span><i data-lucide="arrow-up-left" class="credit-arrow"></i></a><a class="credit-social-link" href="https://t.me/jelofen1962" target="_blank" rel="noopener noreferrer"><i data-lucide="send"></i><span><strong>Telegram</strong><small>t.me/jelofen1962</small></span><i data-lucide="arrow-up-left" class="credit-arrow"></i></a><a class="credit-social-link" href="tel:+989109721962"><i data-lucide="phone"></i><span><strong>تماس</strong><small dir="ltr">+98 910 972 1962</small></span><i data-lucide="arrow-up-left" class="credit-arrow"></i></a></div><div class="credit-countdown-wrap"><div class="credit-countdown-line"><span>بازدید از صفحه سازنده</span><strong id="creditCountdown">در ۵ ثانیه به گیت‌هاب هدایت می‌شوید</strong></div><div class="credit-progress"><span id="creditProgress"></span></div><button type="button" class="credit-stay" data-close-credit>فعلاً همین‌جا می‌مانم</button></div></div><div class="credit-modal-foot"><span>© JELofEN</span><span>BottleNeck · v1.1.0</span></div></section></div>
 
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.456.0/dist/umd/lucide.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
-  <script src="/static/app.js?v=1.0.0"></script>
+  <script src="/static/app.js?v=1.1.0"></script>
 </body>
 </html>

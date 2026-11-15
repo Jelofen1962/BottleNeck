@@ -17,7 +17,7 @@ def test_health_and_security_headers(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["application"] == "BottleNeck"
-    assert response.json()["version"] == "1.0.0"
+    assert response.json()["version"] == "1.1.0"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "SAMEORIGIN"
     assert "default-src 'self'" in response.headers["content-security-policy"]

@@ -32,6 +32,7 @@ Run the checks from the project root:
 ```bash
 python -m py_compile main.py bottleneck_cli.py
 node --check static/app.js
+python scripts/ui_audit.py
 uv run --group dev --python 3.12 pytest -q
 ```
 

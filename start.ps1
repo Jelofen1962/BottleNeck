@@ -10,7 +10,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 $env:BOTTLENECK_BACKUP_INTERVAL_HOURS = if ($env:BOTTLENECK_BACKUP_INTERVAL_HOURS) { $env:BOTTLENECK_BACKUP_INTERVAL_HOURS } else { "24" }
 $env:BOTTLENECK_BACKUP_RETENTION = if ($env:BOTTLENECK_BACKUP_RETENTION) { $env:BOTTLENECK_BACKUP_RETENTION } else { "14" }
 
-Write-Host "BottleNeck v1.0.0 | preparing pinned Python 3.12 environment..." -ForegroundColor Cyan
+Write-Host "BottleNeck v1.1.0 | preparing pinned Python 3.12 environment..." -ForegroundColor Cyan
 uv sync --python 3.12 --no-dev
 if ($LASTEXITCODE -ne 0) { throw "uv sync failed. Try: Remove-Item -Recurse -Force .venv -ErrorAction SilentlyContinue; uv sync --python 3.12 --no-dev" }
 

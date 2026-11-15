@@ -1,10 +1,10 @@
-/* BottleNeck v1.0.0
+/* BottleNeck v1.1.0
    Creator credit requested by the project owner: «ساخته شده با عشق توسط ژلوفن».
    Telegram: https://t.me/jelofen1962 | Phone: +989109721962
 */
 (() => {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const STATUSES = [
     { id: 'todo', label: 'در صف', cls: 'todo' },
     { id: 'in-progress', label: 'در حال انجام', cls: 'in-progress' },
@@ -31,6 +31,7 @@
     "recurring.manage":"مدیریت کارهای تکرارشونده","templates.manage":"مدیریت قالب‌ها",
     "approvals.manage":"بررسی و تأیید خروجی‌ها"
   };
+  const DEFAULT_ROLE_COLOR = '#4e574e';
   const PAGES = {
     overview: 'نمای کلی', 'my-tasks': 'کارهای من', 'all-tasks': 'همه کارها',
     board: 'برد کانبان', calendar: 'تقویم', projects: 'پروژه‌ها',
@@ -66,10 +67,10 @@
     chatMessages: [], chatChannel: 'workspace', chatTeamId: '', chatPresence: [], presenceHandle: null, cursorPollHandle: null, lastCursorSent: 0, remotePresence: [], customRoles: [], uploadShareSettings: null,
     chatReplyTo: null, chatEditingId: null, chatMentions: [], chatAttachment: null, chatResource: null, chatRecorder: null, chatMediaStream: null, chatRecordingTimer: null, chatSearch: '', mdAutoSaveTimer: null, mdSaving: false, mdDirtyCounter: 0, mdSavedCounter: 0,
     workspaces: [], rolePermissions: [], backups: [], security: null, notificationPrefs: null, ws: null, wsReconnectTimer: null, pauseSocketReconnect: false,
-    serverOverview: null, serverSettings: null, serverWorkspaces: [], serverUsers: [], serverLogs: [], serverLogLines: [], serverBackups: [], serverSelectedWorkspace: '', serverAdminBusy: false };
+    serverOverview: null, serverSettings: null, serverWorkspaces: [], serverUsers: [], serverLogs: [], serverLogLines: [], serverBackups: [], serverSelectedWorkspace: '', serverAdminBusy: false, pendingDialogResolve: null, modalPreviousFocus: null, tourPreviousFocus: null, creditPreviousFocus: null };
 
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-  const faNum = (value) => Number(value || 0).toLocaleString('fa-IR-u-nu-arab');
+  const faNum = (value) => Number(value || 0).toLocaleString('fa-IR');
   const persianDigits = (value) => String(value).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
   const PERSIAN_MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
   const persianCalendarFormatter = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', {
@@ -142,24 +143,39 @@
     const m = String(iso).slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return iso;
     const dt = new Date(Date.UTC(Number(m[1]), Number(m[2])-1, Number(m[3]), 12));
-    return Number.isNaN(dt.getTime()) ? iso : new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-arab', options).format(dt);
+    return Number.isNaN(dt.getTime()) ? iso : new Intl.DateTimeFormat('fa-IR-u-ca-persian', options).format(dt);
   };
   const fmtTime = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-arab', { calendar: 'persian', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
+    return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat('fa-IR-u-ca-persian', { calendar: 'persian', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
   };
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const overdue = (task) => task.status !== 'done' && task.dueDate && task.dueDate < todayISO();
   const initials = (name) => String(name || '؟').trim().split(/\s+/).slice(0, 2).map(x => x[0] || '').join('') || '؟';
-  const avatar = (user, size = '') => `<span class="avatar ${size} ${user?.avatarUrl?'has-photo':''}" title="${esc(user?.name || '')}">${user?.avatarUrl?`<img src="${esc(user.avatarUrl)}" alt="" loading="lazy" />`:esc(initials(user?.name))}</span>`;
+  const avatar = (user, size = '') => `<span class="avatar ${size} ${user?.avatarUrl?'has-photo':''}" role="img" aria-label="تصویر نمایه ${esc(user?.name || 'عضو')}" title="${esc(user?.name || '')}">${user?.avatarUrl?`<img src="${esc(user.avatarUrl)}" alt="" loading="lazy" />`:esc(initials(user?.name))}</span>`;
   const avatarStack = (arr = []) => `<span class="avatar-stack">${arr.slice(0, 4).map(x => avatar(x, 'avatar-xs')).join('')}${arr.length > 4 ? `<span class="avatar avatar-xs">+${faNum(arr.length - 4)}</span>` : ''}</span>`;
   const statusPill = (id) => { const s = statusOf(id); return `<span class="status-pill status-${s.cls} status-tint-${esc(s.color||'neutral')}">${esc(s.label)}</span>`; };
   const priorityPill = (id) => { const p = priorityOf(id); return `<span class="priority-pill priority-${p.cls}">${p.label}</span>`; };
-  const empty = (icon, title, message) => `<div class="empty-state"><i data-lucide="${icon}"></i><strong>${esc(title)}</strong><br>${esc(message)}</div>`;
+  const empty = (icon, title, message) => `<div class="empty-state"><i data-lucide="${icon}" aria-hidden="true"></i><strong>${esc(title)}</strong><p>${esc(message)}</p></div>`;
   const rolePill = (role, customName = '', color = '') => `<span class="role-pill ${role === 'owner' ? 'owner' : ''}" ${color?`style="--role-color:${esc(color)}"`:''}>${esc(customName || roleLabel(role))}</span>`;
   function setProfileAvatar(user) { const node=$('profileAvatar'); if(!node)return; node.innerHTML=user?.avatarUrl?`<img src="${esc(user.avatarUrl)}" alt="" />`:esc(initials(user?.name).slice(0,1)); node.classList.toggle('has-photo',!!user?.avatarUrl); }
   const iconRefresh = () => { try { window.lucide?.createIcons?.(); } catch (_) {} };
+  function normalizeButtonTypes(root = document) {
+    const candidates = [];
+    if (root instanceof HTMLButtonElement && !root.hasAttribute('type')) candidates.push(root);
+    root.querySelectorAll?.('button:not([type])').forEach(button => candidates.push(button));
+    for (const button of candidates) {
+      const submitsForm = Boolean(button.closest('form')) && (button.classList.contains('primary-button') || button.classList.contains('create-button') || button.hasAttribute('data-submit'));
+      button.type = submitsForm ? 'submit' : 'button';
+    }
+  }
+  normalizeButtonTypes();
+  const buttonTypeObserver = new MutationObserver(records => {
+    for (const record of records) for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) normalizeButtonTypes(node);
+  });
+  buttonTypeObserver.observe(document.body, { childList: true, subtree: true });
+
 
   async function api(path, options = {}) {
     const opts = { credentials: 'same-origin', ...options, headers: { ...(options.headers || {}) } };
@@ -177,8 +193,12 @@
     return payload;
   }
   function toast(message, icon = 'check') {
-    const node = document.createElement('div'); node.className = 'toast';
-    node.innerHTML = `<i data-lucide="${esc(icon)}"></i><span>${esc(message)}</span>`;
+    const isError = ['alert-circle', 'x-circle', 'shield-alert'].includes(icon);
+    const isWarning = ['lock', 'alert-triangle', 'clock'].includes(icon);
+    const tone = isError ? 'error' : isWarning ? 'warning' : 'success';
+    const node = document.createElement('div'); node.className = `toast toast-${tone}`;
+    node.setAttribute('role', isError ? 'alert' : 'status'); node.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+    node.innerHTML = `<i data-lucide="${esc(icon)}" aria-hidden="true"></i><span>${esc(message)}</span>`;
     $('toastRegion').appendChild(node); iconRefresh();
     window.setTimeout(() => { node.style.opacity = '0'; node.style.transform = 'translateY(7px)'; window.setTimeout(() => node.remove(), 220); }, 2900);
   }
@@ -196,9 +216,16 @@
   }
 
   function setAuthTab(tab) {
-    document.querySelectorAll('[data-auth-tab]').forEach(b => b.classList.toggle('active', b.dataset.authTab === tab));
+    document.querySelectorAll('[data-auth-tab]').forEach(b => {
+      const active = b.dataset.authTab === tab;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', String(active));
+      b.tabIndex = active ? 0 : -1;
+    });
     $('loginPanel').classList.toggle('hidden', tab !== 'login');
     $('registerPanel').classList.toggle('hidden', tab !== 'register');
+    $('loginPanel').setAttribute('aria-hidden', String(tab !== 'login'));
+    $('registerPanel').setAttribute('aria-hidden', String(tab !== 'register'));
     if (getAuthLinkParams().has('join') || getAuthLinkParams().has('invite')) $('workspaceNameField')?.classList.add('hidden');
     $('authError').classList.add('hidden');
   }
@@ -213,7 +240,7 @@
     try {
       const result = await api('/api/auth/login', { method: 'POST', body: { email, password, remember_me: $('rememberMe')?.checked || false } });
       if (result.twoFactorRequired) {
-        const code = prompt('کد ۶ رقمی برنامه احراز هویت یا یکی از کدهای بازیابی را وارد کنید:');
+        const code = await askInput({title:'تأیید دومرحله‌ای',label:'کد برنامه احراز هویت یا کد بازیابی',message:'کد شش‌رقمی را وارد کنید. کد بازیابی فقط یک‌بار قابل استفاده است.',placeholder:'کد تأیید',maxLength:32,confirmLabel:'تأیید و ورود'});
         if (!code) return;
         await api('/api/auth/2fa/verify', { method:'POST', headers:{'X-Login-Challenge':result.challengeToken}, body:{code:code.trim()} });
       }
@@ -330,7 +357,7 @@
   function renderRemoteCursors(items) {
     const layer=$('remoteCursorLayer'); if(!layer)return;
     const valid=(items||[]).filter(p=>p.user_id!==state.me?.id&&p.cursor_page===state.page&&p.cursor_x_pct!==null&&p.cursor_y_pct!==null);
-    layer.innerHTML=valid.map(p=>`<div class="remote-cursor" style="left:${Math.max(0,Math.min(100,Number(p.cursor_x_pct)||0))}%;top:${Math.max(0,Math.min(100,Number(p.cursor_y_pct)||0))}%;--cursor-color:${esc(p.cursor_color||'#47765e')}"><i data-lucide="mouse-pointer-2"></i><span>${esc(p.name)}</span></div>`).join(''); iconRefresh();
+    layer.innerHTML=valid.map(p=>`<div class="remote-cursor" style="left:${Math.max(0,Math.min(100,Number(p.cursor_x_pct)||0))}%;top:${Math.max(0,Math.min(100,Number(p.cursor_y_pct)||0))}%;--cursor-color:${esc(p.cursor_color||'var(--presence-fallback-color)')}"><i data-lucide="mouse-pointer-2"></i><span>${esc(p.name)}</span></div>`).join(''); iconRefresh();
   }
   async function refreshPresence() {
     if(!state.me)return;
@@ -382,7 +409,7 @@
     try {
       let target = value;
       if(value==='__new__'){
-        const name = prompt('نام فضای کاری تازه را وارد کنید:');
+        const name = await askInput({title:'ساخت فضای کاری',label:'نام فضای کاری',message:'یک نام روشن برای فضای جدید انتخاب کنید.',placeholder:'مثلاً تیم طراحی محصول',minLength:2,maxLength:100,confirmLabel:'ساخت فضا'});
         if(!name || name.trim().length<2){populateWorkspaceSelector();return;}
         const created = await api('/api/workspaces',{method:'POST',body:{name:name.trim()}}); target=created.id;
       }
@@ -392,18 +419,85 @@
     }catch(e){populateWorkspaceSelector();toast(e.message,'alert-circle');}
   }
 
+  const MODAL_FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
   function showModal(title, body, eyebrow = 'BottleNeck') {
-    $('modalTitle').textContent = title; $('modalEyebrow').textContent = eyebrow; $('modalBody').innerHTML = body;
-    $('modalBackdrop').classList.add('open'); $('modalBackdrop').setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden'; iconRefresh();
+    state.modalPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    $('modalTitle').textContent = title;
+    $('modalEyebrow').textContent = eyebrow;
+    $('modalBody').innerHTML = body;
+    $('modalPanel').setAttribute('tabindex', '-1');
+    $('modalBackdrop').classList.add('open');
+    $('modalBackdrop').setAttribute('aria-hidden', 'false');
+    $('appShell').inert = !$('appShell').classList.contains('hidden');
+    $('authScreen').inert = !$('authScreen').classList.contains('hidden');
+    document.body.style.overflow = 'hidden';
+    iconRefresh();
+    requestAnimationFrame(() => {
+      const panel = $('modalPanel');
+      const first = panel.querySelector('[autofocus]') || panel.querySelector(MODAL_FOCUSABLE);
+      (first || panel).focus({ preventScroll: true });
+    });
   }
-  function closeModalNow() { clearTimeout(state.mdAutoSaveTimer); $('modalPanel')?.classList.remove('md-editor-modal'); $('modalBackdrop').classList.remove('open'); $('modalBackdrop').setAttribute('aria-hidden', 'true'); $('modalBody').innerHTML = ''; document.body.style.overflow = ''; state.modalTaskId = null; }
+  function closeModalNow() {
+    clearTimeout(state.mdAutoSaveTimer);
+    if (state.pendingDialogResolve) {
+      const resolve = state.pendingDialogResolve;
+      state.pendingDialogResolve = null;
+      resolve(null);
+    }
+    $('modalPanel')?.classList.remove('md-editor-modal');
+    $('modalBackdrop').classList.remove('open');
+    $('modalBackdrop').setAttribute('aria-hidden', 'true');
+    $('modalBody').innerHTML = '';
+    $('appShell').inert = false;
+    $('authScreen').inert = false;
+    document.body.style.overflow = '';
+    state.modalTaskId = null;
+    const previous = state.modalPreviousFocus;
+    state.modalPreviousFocus = null;
+    if (previous?.isConnected) previous.focus({ preventScroll: true });
+  }
   function closeModal() {
+    if (state.pendingDialogResolve) { closeModalNow(); return; }
     const form=$('sharedNoteForm');
     if(form?.dataset.nodeId && state.mdDirtyCounter>state.mdSavedCounter){
       flushMarkdownAutosave().then(saved=>{if(saved)closeModalNow();else toast('یادداشت هنوز ذخیره نشده است؛ پس از بررسی اتصال دوباره تلاش کنید.','alert-circle');}).catch(error=>toast(error.message,'alert-circle'));
       return;
     }
     closeModalNow();
+  }
+  function askInput({ title, eyebrow = 'BottleNeck', message = '', label, type = 'text', value = '', placeholder = '', required = true, minLength = 0, maxLength = 240, confirmLabel = 'ادامه', autocomplete = 'off' }) {
+    return new Promise(resolve => {
+      state.pendingDialogResolve = resolve;
+      const safeValue = esc(value), safePlaceholder = esc(placeholder);
+      const body = `<form id="appInputDialogForm" class="form-stack app-dialog-form">${message ? `<p class="dialog-copy">${esc(message)}</p>` : ''}<label class="field"><span>${esc(label)}</span><input name="answer" type="${esc(type)}" value="${safeValue}" placeholder="${safePlaceholder}" ${required ? 'required' : ''} ${minLength ? `minlength="${minLength}"` : ''} maxlength="${maxLength}" autocomplete="${esc(autocomplete)}" autofocus /></label><p class="field-error hidden" id="appDialogError" role="alert"></p><div class="modal-footer"><button type="button" class="secondary-button" data-dialog-cancel>انصراف</button><span class="spacer"></span><button type="submit" class="primary-button">${esc(confirmLabel)}</button></div></form>`;
+      showModal(title, body, eyebrow);
+      const form = $('appInputDialogForm');
+      form.addEventListener('submit', event => {
+        event.preventDefault(); event.stopPropagation();
+        const input = form.elements.answer;
+        const answer = input.value;
+        if (required && !answer.trim() || minLength && answer.length < minLength) {
+          $('appDialogError').textContent = minLength ? `حداقل ${faNum(minLength)} نویسه وارد کنید.` : 'این فیلد را کامل کنید.';
+          $('appDialogError').classList.remove('hidden'); input.focus(); return;
+        }
+        const done = state.pendingDialogResolve; state.pendingDialogResolve = null;
+        closeModalNow(); done?.(answer);
+      });
+      form.querySelector('[data-dialog-cancel]').addEventListener('click', closeModalNow);
+    });
+  }
+  function askConfirm({ title, message, eyebrow = 'تأیید عملیات', confirmLabel = 'تأیید', danger = true }) {
+    return new Promise(resolve => {
+      state.pendingDialogResolve = resolve;
+      const body = `<div class="app-confirm-dialog"><p class="dialog-copy">${esc(message)}</p><div class="modal-footer"><button type="button" class="secondary-button" data-dialog-cancel>انصراف</button><span class="spacer"></span><button type="button" class="${danger ? 'danger-button' : 'primary-button'}" data-dialog-confirm>${esc(confirmLabel)}</button></div></div>`;
+      showModal(title, body, eyebrow);
+      $('modalBody').querySelector('[data-dialog-cancel]').addEventListener('click', closeModalNow);
+      $('modalBody').querySelector('[data-dialog-confirm]').addEventListener('click', () => {
+        const done = state.pendingDialogResolve; state.pendingDialogResolve = null;
+        closeModalNow(); done?.(true);
+      });
+    });
   }
   let creditRedirectTimer = null;
   let creditCountdownTimer = null;
@@ -414,10 +508,30 @@
     const line=$('creditCountdown'); if(line)line.textContent='هر زمان خواستید می‌توانید صفحه سازنده را باز کنید.';
     const progress=$('creditProgress'); if(progress)progress.style.width='0%';
   }
-  function closeCredit() { stopCreditRedirect(); $('creditBackdrop').classList.remove('open'); $('creditBackdrop').setAttribute('aria-hidden', 'true'); }
+  function setOverlayBackground(active) {
+    const app = $('appShell'), auth = $('authScreen');
+    if (app) app.inert = Boolean(active && !app.classList.contains('hidden'));
+    if (auth) auth.inert = Boolean(active && !auth.classList.contains('hidden'));
+    document.body.style.overflow = active ? 'hidden' : '';
+  }
+  function focusInside(container) {
+    const first = container?.querySelector('[autofocus]') || container?.querySelector(MODAL_FOCUSABLE);
+    (first || container)?.focus?.({ preventScroll: true });
+  }
+  function closeCredit() {
+    stopCreditRedirect();
+    $('creditBackdrop').classList.remove('open');
+    $('creditBackdrop').setAttribute('aria-hidden', 'true');
+    setOverlayBackground(false);
+    const previous = state.creditPreviousFocus; state.creditPreviousFocus = null;
+    if (previous?.isConnected) previous.focus({ preventScroll: true });
+  }
   function openCredit() {
     stopCreditRedirect();
-    $('creditBackdrop').classList.add('open'); $('creditBackdrop').setAttribute('aria-hidden', 'false'); iconRefresh();
+    state.creditPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    $('creditBackdrop').classList.add('open'); $('creditBackdrop').setAttribute('aria-hidden', 'false');
+    setOverlayBackground(true); iconRefresh();
+    requestAnimationFrame(() => focusInside($('creditModal')));
     const started=Date.now(), duration=5000;
     const update=()=>{const remaining=Math.max(0,duration-(Date.now()-started));const seconds=Math.ceil(remaining/1000);if($('creditCountdown'))$('creditCountdown').textContent=`در ${faNum(seconds)} ثانیه به گیت‌هاب هدایت می‌شوید`;if($('creditProgress'))$('creditProgress').style.width=`${Math.min(100,((duration-remaining)/duration)*100)}%`;};
     update(); creditCountdownTimer=setInterval(update,100);
@@ -425,7 +539,7 @@
   }
 
   function heading(title, description, action = '') {
-    return `<div class="page-heading"><div><p class="eyebrow"><span class="live-dot"></span> فضای کاری ${esc(state.me.workspaceName)}</p><h1>${esc(title)}</h1><p>${esc(description)}</p></div><div class="heading-actions">${action}</div></div>`;
+    return `<div class="page-heading"><div><p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> فضای کاری ${esc(state.me.workspaceName)}</p><h1 id="pageHeading" tabindex="-1">${esc(title)}</h1><p>${esc(description)}</p></div><div class="heading-actions">${action}</div></div>`;
   }
   function tasksFiltered(onlyMine = false) {
     const q = state.search.trim().toLocaleLowerCase('fa');
@@ -439,7 +553,11 @@
   function render() {
     $('breadcrumbCurrent').textContent = PAGES[state.page] || 'نمای کلی';
     $('serverAdminNav')?.classList.toggle('hidden', !state.me?.instanceAdmin);
-    document.querySelectorAll('.nav-item[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === state.page));
+    document.querySelectorAll('.nav-item[data-page]').forEach(b => {
+      const active = b.dataset.page === state.page;
+      b.classList.toggle('active', active);
+      if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
     $('myTaskCount').textContent = faNum(state.tasks.filter(t => (t.assigneeIds || []).includes(state.me.id) && t.status !== 'done').length);
     $('notificationDot').classList.toggle('hidden', state.unread < 1);
     const onlineCount=$('onlineCount'); if(onlineCount) onlineCount.textContent=faNum((state.remotePresence||[]).length);
@@ -474,8 +592,9 @@
       state.boardItems = data.items || []; state.boardPassword = password || ''; state.activeBoard = data.board; render();
     } catch (e) {
       if (e.message.includes('گذرواژه')) {
-        const pass = prompt('این برد با گذرواژه محافظت شده است. گذرواژه را وارد کنید:');
+        const pass = await askInput({title:'برد محافظت‌شده',label:'گذرواژه برد',type:'password',message:'برای مشاهده کارت‌های این برد، گذرواژه اشتراک را وارد کنید.',autocomplete:'current-password',maxLength:200,confirmLabel:'بازکردن برد'});
         if (pass) return loadBoardItems(pass);
+        return;
       }
       toast(e.message,'lock');
     }
@@ -510,7 +629,7 @@
     return `${heading('یادداشت‌های Markdown','یادداشت‌های مشترک با پشتیبانی Markdown و پیش‌نمایش امن.',`<button class="primary-button" data-action="new-note"><i data-lucide="plus"></i> یادداشت تازه</button><button class="secondary-button" data-page-link="shared-drive">بازکردن فضای فایل‌ها</button>`)}<section class="panel notes-index"><p class="form-hint">یادداشت‌ها در ریشه فضای مشترک نمایش داده می‌شوند. برای یادداشت‌های داخل پوشه، از فضای فایل‌ها وارد همان پوشه شوید.</p>${notes.map(n=>`<button class="note-index-row" data-open-drive-node="${esc(n.id)}"><i data-lucide="file-text"></i><span><strong>${esc(n.title)}</strong><small>${fmtTime(n.updatedAt)} · ${n.accessMode==='password'?'گذرواژه‌دار':n.accessMode==='team'?'تیمی':'مشترک'}</small></span><i data-lucide="chevron-left"></i></button>`).join('')||empty('notebook-pen','یادداشتی ثبت نشده','یک یادداشت تازه بسازید؛ می‌توانید از Markdown کامل استفاده کنید.')}</section>`;
   }
   function renderChatPeople(items) {
-    return (items||[]).map(p=>`<button class="chat-person" data-presence-jump="${esc(p.page)}"><span class="chat-person-avatar">${p.avatarUrl?`<img src="${esc(p.avatarUrl)}" alt="" />`:esc(initials(p.name).slice(0,1))}</span><span><strong>${esc(p.name)}</strong><small>${esc(p.roleName||'عضو')} · ${esc(PAGES[p.page]||'فضای کار')}</small></span><i class="online-dot" style="--person-color:${esc(p.cursor_color||'#47765e')}"></i></button>`).join('');
+    return (items||[]).map(p=>`<button class="chat-person" data-presence-jump="${esc(p.page)}"><span class="chat-person-avatar">${p.avatarUrl?`<img src="${esc(p.avatarUrl)}" alt="" />`:esc(initials(p.name).slice(0,1))}</span><span><strong>${esc(p.name)}</strong><small>${esc(p.roleName||'عضو')} · ${esc(PAGES[p.page]||'فضای کار')}</small></span><i class="online-dot" style="--person-color:${esc(p.cursor_color||'var(--presence-fallback-color)')}"></i></button>`).join('');
   }
   function renderChatAttachment(att) {
     if(!att)return '';
@@ -560,11 +679,11 @@
     return `${heading('گفت‌وگوی تیمی','پیام، فایل، صدا و پیوندهای کاری را در یک گفتگوی قابل جست‌وجو نگه دارید.',`<span class="live-presence"><i></i> ${faNum(roster.length)} نفر آنلاین</span>`)}
       <section class="panel chat-workspace-v8"><aside class="chat-rail"><div class="chat-rail-head"><span class="eyebrow">CHANNELS</span><strong>فضاهای گفتگو</strong></div><button class="chat-channel ${state.chatChannel==='workspace'?'active':''}" data-chat-channel="workspace"><i data-lucide="hash"></i><span>گفتگوی عمومی</span></button><div class="chat-rail-label">تیم‌ها</div>${teamChannels||'<p class="form-hint">هنوز تیمی برای گفتگو در دسترس نیست.</p>'}<div class="chat-rail-foot"><i data-lucide="shield-check"></i> دسترسی پیام‌ها با عضویت فضای کاری و تیم کنترل می‌شود.</div></aside>
       <div class="chat-main"><header class="chat-main-head"><div><p class="eyebrow">${state.chatChannel==='workspace'?'WORKSPACE CHANNEL':'TEAM CHANNEL'}</p><h2>${esc(channelName)}</h2><small>برای اشاره به همکار، @ را تایپ کنید. برای پاسخ، روی پیام بزنید.</small></div><div class="chat-head-actions"><div class="chat-search-box" role="search"><i data-lucide="search"></i><input id="chatSearch" type="search" value="${esc(state.chatSearch)}" placeholder="جست‌وجو در پیام‌ها…" aria-label="جست‌وجو در پیام‌ها" /><button type="button" data-chat-search-clear title="پاک‌کردن جست‌وجو"><i data-lucide="x"></i></button><button type="button" data-chat-search-submit title="جست‌وجو"><i data-lucide="arrow-left"></i></button></div><span class="live-presence"><i></i> همگام‌سازی زنده</span></div></header>
-      <div class="chat-message-feed" id="chatMessages">${state.chatMessages.map(renderChatMessage).join('')||empty(state.chatSearch?'search-x':'messages-square',state.chatSearch?'پیامی پیدا نشد':'گفتگو از اینجا شروع می‌شود',state.chatSearch?'عبارت دیگری جست‌وجو کنید یا فیلتر را پاک کنید.':'یک پیام، فایل یا یادداشت مرتبط برای هم‌تیمی‌ها بفرستید.')}</div>
-      <form id="chatComposeForm" class="chat-compose chat-compose-v8"><div id="chatReplyState" class="chat-compose-state ${state.chatReplyTo?'':'hidden'}">${state.chatReplyTo?`<span><i data-lucide="reply"></i><strong>پاسخ به ${esc(state.chatReplyTo.userName)}</strong><small>${esc(state.chatReplyTo.body||'')}</small></span><button type="button" data-chat-clear-reply><i data-lucide="x"></i></button>`:''}</div><div id="chatEditState" class="chat-compose-state ${state.chatEditingId?'':'hidden'}"><span><i data-lucide="pencil"></i><strong>ویرایش پیام</strong><small>پس از ذخیره، پیام قبلی به‌روزرسانی می‌شود.</small></span><button type="button" data-chat-cancel-edit><i data-lucide="x"></i></button></div>
-      <div id="chatPendingAttachment" class="chat-pending-chip ${state.chatAttachment?'':'hidden'}">${state.chatAttachment?`<span><i data-lucide="paperclip"></i><strong>${esc(state.chatAttachment.name)}</strong><small>${formatBytes(state.chatAttachment.sizeBytes||0)}</small></span><button type="button" data-chat-clear-attachment><i data-lucide="x"></i></button>`:''}</div><div id="chatPendingResource" class="chat-pending-chip ${state.chatResource?'':'hidden'}">${state.chatResource?`<span><i data-lucide="link"></i><strong>${esc(state.chatResource.title)}</strong><small>${esc(state.chatResource.type)}</small></span><button type="button" data-chat-clear-resource><i data-lucide="x"></i></button>`:''}</div>
+      <div class="chat-message-feed" id="chatMessages" role="region" aria-label="پیام‌های ${esc(channelName)}" tabindex="0">${state.chatMessages.map(renderChatMessage).join('')||empty(state.chatSearch?'search-x':'messages-square',state.chatSearch?'پیامی پیدا نشد':'گفتگو از اینجا شروع می‌شود',state.chatSearch?'عبارت دیگری جست‌وجو کنید یا فیلتر را پاک کنید.':'یک پیام، فایل یا یادداشت مرتبط برای هم‌تیمی‌ها بفرستید.')}</div>
+      <form id="chatComposeForm" class="chat-compose chat-compose-v8"><div id="chatReplyState" class="chat-compose-state ${state.chatReplyTo?'':'hidden'}">${state.chatReplyTo?`<span><i data-lucide="reply"></i><strong>پاسخ به ${esc(state.chatReplyTo.userName)}</strong><small>${esc(state.chatReplyTo.body||'')}</small></span><button type="button" data-chat-clear-reply aria-label="لغو پاسخ"><i data-lucide="x"></i></button>`:''}</div><div id="chatEditState" class="chat-compose-state ${state.chatEditingId?'':'hidden'}"><span><i data-lucide="pencil"></i><strong>ویرایش پیام</strong><small>پس از ذخیره، پیام قبلی به‌روزرسانی می‌شود.</small></span><button type="button" data-chat-cancel-edit aria-label="لغو ویرایش پیام"><i data-lucide="x"></i></button></div>
+      <div id="chatPendingAttachment" class="chat-pending-chip ${state.chatAttachment?'':'hidden'}">${state.chatAttachment?`<span><i data-lucide="paperclip"></i><strong>${esc(state.chatAttachment.name)}</strong><small>${formatBytes(state.chatAttachment.sizeBytes||0)}</small></span><button type="button" data-chat-clear-attachment aria-label="حذف پیوست"><i data-lucide="x"></i></button>`:''}</div><div id="chatPendingResource" class="chat-pending-chip ${state.chatResource?'':'hidden'}">${state.chatResource?`<span><i data-lucide="link"></i><strong>${esc(state.chatResource.title)}</strong><small>${esc(state.chatResource.type)}</small></span><button type="button" data-chat-clear-resource aria-label="حذف پیوند منبع"><i data-lucide="x"></i></button>`:''}</div>
       <div class="chat-upload-progress hidden" id="chatUploadProgress"><div><strong id="chatUploadName">در حال بارگذاری</strong><span id="chatUploadPercent">۰٪</span></div><div class="progress-track"><span id="chatUploadBar"></span></div></div>
-      <div class="chat-compose-input-wrap"><div class="chat-mention-menu hidden" id="chatMentionMenu"></div><textarea name="body" id="chatBody" rows="2" maxlength="10000" placeholder="پیام بنویسید… برای ارسال Ctrl + Enter" ></textarea></div><input id="chatFileInput" type="file" class="visually-hidden" accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.zip" />
+      <div class="chat-compose-input-wrap"><div class="chat-mention-menu hidden" id="chatMentionMenu" role="listbox" aria-label="پیشنهاد اعضا"></div><textarea name="body" id="chatBody" aria-label="متن پیام" aria-autocomplete="list" aria-controls="chatMentionMenu" aria-haspopup="listbox" aria-expanded="false" rows="2" maxlength="10000" placeholder="پیام بنویسید… برای ارسال Ctrl + Enter"></textarea></div><input id="chatFileInput" type="file" class="visually-hidden" accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.zip" />
       <div class="chat-compose-foot"><div class="chat-tools"><button type="button" class="chat-tool" data-chat-attach title="افزودن فایل"><i data-lucide="paperclip"></i><span>فایل</span></button><button type="button" class="chat-tool" data-chat-mention-focus title="اشاره به همکار"><i data-lucide="at-sign"></i><span>اشاره</span></button><button type="button" class="chat-tool" data-chat-link-resource title="پیوند به کار، یادداشت یا فایل"><i data-lucide="link-2"></i><span>پیوند کاری</span></button><button type="button" class="chat-tool" id="chatRecordButton" data-chat-record title="ضبط پیام صوتی"><i data-lucide="mic"></i><span>پیام صوتی</span></button></div><div class="chat-submit-tools"><small>ارسال امن در فضای کاری · فایل حداکثر ۲۵ مگابایت</small><button class="primary-button" type="submit"><i data-lucide="send"></i> ارسال</button></div></div></form></div>
       ${renderChatPeopleRail(roster)}</section>`;
   }
@@ -577,7 +696,7 @@
       if(!parentId) state.driveTrail=[];
       render();
     } catch(e) {
-      if(e.message.includes('گذرواژه')) { const pass=prompt('این پوشه با گذرواژه محافظت شده است:'); if(pass) return loadDrive(parentId,pass); }
+      if(e.message.includes('گذرواژه')) { const pass=await askInput({title:'پوشه محافظت‌شده',label:'گذرواژه پوشه',type:'password',message:'برای مشاهده محتویات این پوشه، گذرواژه را وارد کنید.',autocomplete:'current-password',maxLength:200,confirmLabel:'بازکردن پوشه'}); if(pass) return loadDrive(parentId,pass); return; }
       toast(e.message,'lock');
     }
   }
@@ -615,7 +734,7 @@
     const body=`<form id="sharedNoteForm" class="md-editor-form" data-node-id="${esc(node?.id||'')}" data-parent-id="${esc(parentId||'')}" data-readonly="${canEdit?'0':'1'}">
       <div class="md-editor-title-row"><label class="field"><span>عنوان یادداشت</span><input name="title" required maxlength="180" value="${esc(node?.title||'')}" placeholder="مثلاً تصمیم‌های جلسه محصول" ${canEdit?'':'readonly'} /></label><span class="md-save-state" id="mdSaveState">${node?'ذخیره‌شده':'یادداشت تازه'}</span></div>
       <div class="md-editor-toolbar" role="toolbar" aria-label="ابزارهای Markdown">${tools}<span class="md-toolbar-divider"></span><button type="button" class="md-tool" data-md-insert="undo" title="بازگشت"><i data-lucide="undo-2"></i></button><button type="button" class="md-tool" data-md-insert="redo" title="انجام دوباره"><i data-lucide="redo-2"></i></button><span class="md-toolbar-spacer"></span><span class="md-gfm-label">Markdown · GFM</span></div>
-      <div class="md-live-workspace"><section class="md-write-pane"><header><strong><i data-lucide="file-pen-line"></i> متن</strong><small>پیش‌نمایش هم‌زمان فعال است</small></header><textarea id="mdSource" name="content" class="md-source" rows="22" maxlength="100000" placeholder="# عنوان یادداشت\n\nمتن را بنویسید…\n\n- [ ] اقدام بعدی" ${canEdit?'':'readonly'}>${esc(node?.content||'')}</textarea><footer><span id="mdWordCount">۰ واژه</span><span>Ctrl + S برای ذخیره</span></footer></section><section class="md-preview-pane"><header><strong><i data-lucide="eye"></i> پیش‌نمایش زنده</strong><span class="live-presence"><i></i> هم‌زمان</span></header><div id="mdPreview" class="markdown-preview md-live-preview">${renderMarkdown(node?.content||'')}</div></section></div>
+      <div class="md-live-workspace"><section class="md-write-pane"><header><strong><i data-lucide="file-pen-line"></i> متن</strong><small>پیش‌نمایش هم‌زمان فعال است</small></header><textarea id="mdSource" aria-label="متن Markdown یادداشت" name="content" class="md-source" rows="22" maxlength="100000" placeholder="# عنوان یادداشت\n\nمتن را بنویسید…\n\n- [ ] اقدام بعدی" ${canEdit?'':'readonly'}>${esc(node?.content||'')}</textarea><footer><span id="mdWordCount">۰ واژه</span><span>Ctrl + S برای ذخیره</span></footer></section><section class="md-preview-pane"><header><strong><i data-lucide="eye"></i> پیش‌نمایش زنده</strong><span class="live-presence"><i></i> هم‌زمان</span></header><div id="mdPreview" class="markdown-preview md-live-preview">${renderMarkdown(node?.content||'')}</div></section></div>
       ${node?'<p class="form-hint">تغییرات به‌صورت خودکار ذخیره می‌شوند؛ همچنین می‌توانید از دکمه ذخیره استفاده کنید.</p>':`<div class="form-grid md-share-controls">${shareControls('noteShare')}</div>`}
       <div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>بستن</button><span class="spacer"></span>${canEdit?'<button class="primary-button" type="submit"><i data-lucide="save"></i> ذخیره یادداشت</button>':''}</div></form>`;
     showModal(node?'ویرایش یادداشت':'یادداشت Markdown تازه',body,'ویرایشگر زنده Markdown');
@@ -706,16 +825,16 @@
   function showChatMentionMenu(input) {
     const menu=$('chatMentionMenu');if(!menu)return;
     const before=input.value.slice(0,input.selectionStart);const match=before.match(/(?:^|\s)@([^\s@]{0,36})$/u);
-    if(!match){menu.classList.add('hidden');menu.innerHTML='';return;}
+    if(!match){menu.classList.add('hidden');menu.innerHTML='';input.setAttribute('aria-expanded','false');return;}
     const q=match[1].toLocaleLowerCase('fa');const teamIds=state.chatChannel==='team'?(state.teams.find(t=>t.id===state.chatTeamId)?.memberIds||[]):(state.users||[]).map(u=>u.id);
     const people=(state.users||[]).filter(u=>u.id!==state.me.id&&teamIds.includes(u.id)&&String(u.name||'').toLocaleLowerCase('fa').includes(q)).slice(0,8);
-    menu.innerHTML=people.map(u=>`<button type="button" data-chat-mention-select="${esc(u.id)}"><span class="mention-avatar">${esc(initials(u.name).slice(0,1))}</span><strong>${esc(u.name)}</strong><small>${esc(u.roleName||'عضو')}</small></button>`).join('')||'<p>هم‌تیمی‌ای با این نام پیدا نشد.</p>';
-    menu.classList.toggle('hidden',!people.length);iconRefresh();
+    menu.innerHTML=people.map(u=>`<button type="button" role="option" aria-selected="false" data-chat-mention-select="${esc(u.id)}"><span class="mention-avatar" aria-hidden="true">${esc(initials(u.name).slice(0,1))}</span><strong>${esc(u.name)}</strong><small>${esc(u.roleName||'عضو')}</small></button>`).join('')||'<p role="status">هم‌تیمی‌ای با این نام پیدا نشد.</p>';
+    menu.classList.toggle('hidden',!people.length);input.setAttribute('aria-expanded',String(people.length>0));iconRefresh();
   }
   function selectChatMention(userId) {
     const user=(state.users||[]).find(x=>x.id===userId),input=$('chatBody');if(!user||!input)return;
     const before=input.value.slice(0,input.selectionStart);const at=before.lastIndexOf('@');if(at<0)return;
-    const end=input.selectionStart;input.setRangeText(`@${user.name} `,at,end,'end');if(!state.chatMentions.includes(userId))state.chatMentions.push(userId);$('chatMentionMenu')?.classList.add('hidden');input.focus();
+    const end=input.selectionStart;input.setRangeText(`@${user.name} `,at,end,'end');if(!state.chatMentions.includes(userId))state.chatMentions.push(userId);$('chatMentionMenu')?.classList.add('hidden');input.setAttribute('aria-expanded','false');input.focus();
   }
   async function searchChatResources(query='') {
     const data=await api(`/api/chat/resources?q=${encodeURIComponent(query)}`);const box=$('chatResourceResults');if(!box)return;
@@ -747,7 +866,7 @@
       detail=await api(`/api/drive/nodes/${nodeId}${q}`);
     } catch(e) {
       if(!e.message.includes('گذرواژه')) { toast(e.message,'alert-circle'); return; }
-      password=prompt('این مورد یا پوشه والد با گذرواژه محافظت شده است:')||'';
+      password=await askInput({title:'مورد محافظت‌شده',label:'گذرواژه اشتراک',type:'password',message:'این فایل یا پوشه با گذرواژه محافظت شده است.',autocomplete:'current-password',maxLength:200,confirmLabel:'ادامه'})||'';
       if(!password)return;
       try { detail=await api(`/api/drive/nodes/${nodeId}?password=${encodeURIComponent(password)}`); }
       catch(err){toast(err.message,'lock');return;}
@@ -812,7 +931,7 @@
     const title = onlyMine ? 'کارهای من' : 'همه کارها';
     return `${heading(title, onlyMine ? 'کارهایی که شما یکی از مسئولان آن هستید.' : 'فهرست کارهای مشترک فضای کاری و وضعیت هرکدام.', `<button class="primary-button" data-action="new-task"><i data-lucide="plus"></i> کار جدید</button>`)}
       <section class="panel table-panel"><div class="toolbar"><div class="filter-tabs"><button class="filter-tab ${state.taskFilter==='all'?'active':''}" data-task-filter="all">همه (${faNum(tasksFiltered(onlyMine).length)})</button><button class="filter-tab ${state.taskFilter==='open'?'active':''}" data-task-filter="open">باز</button><button class="filter-tab ${state.taskFilter==='done'?'active':''}" data-task-filter="done">تکمیل‌شده</button></div><div class="toolbar-right"><select class="select-control" id="statusFilter"><option value="">همه وضعیت‌ها</option>${STATUSES.map(s=>`<option value="${s.id}">${esc(statusOf(s.id).label)}</option>`).join('')}</select><select class="select-control" id="teamFilter"><option value="">همه تیم‌ها</option>${state.teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></div></div>
-      <div class="task-table-wrap"><table class="task-table"><thead><tr><th>عنوان کار</th><th>مسئولان</th><th>اولویت</th><th>وضعیت</th><th>موعد</th><th>پیوست / چک‌لیست</th></tr></thead><tbody id="taskRows">${tasks.map(t=>`<tr data-open-task="${esc(t.id)}"><td><span class="table-task-name"><span class="task-check ${t.status==='done'?'checked':''}">${t.status==='done'?'<i data-lucide="check"></i>':''}</span><span>${esc(t.title)}<small style="display:block;color:#9da197;font-size:8px;margin-top:4px">${esc(t.projectName || projectOf(t.projectId).name)}</small></span></span></td><td><span class="person-cell">${avatarStack(t.assignees||[])} <small>${faNum(t.assignees?.length||0)}</small></span></td><td>${priorityPill(t.priority)}</td><td>${statusPill(t.status)}</td><td><span class="task-due ${overdue(t)?'late':''}">${fmtDate(t.dueDate)}</span></td><td><small>${faNum(t.attachmentCount||0)} فایل · ${faNum(t.checklistDone||0)}/${faNum(t.checklist||0)}</small></td></tr>`).join('') || `<tr><td colspan="6">${empty('list-checks','کاری پیدا نشد','فیلترها را تغییر دهید یا یک کار تازه بسازید.')}</td></tr>`}</tbody></table></div></section>`;
+      <div class="task-table-wrap"><table class="task-table"><thead><tr><th>عنوان کار</th><th>مسئولان</th><th>اولویت</th><th>وضعیت</th><th>موعد</th><th>پیوست / چک‌لیست</th></tr></thead><tbody id="taskRows">${tasks.map(t=>`<tr data-open-task="${esc(t.id)}"><td><span class="table-task-name"><span class="task-check ${t.status==='done'?'checked':''}">${t.status==='done'?'<i data-lucide="check"></i>':''}</span><span>${esc(t.title)}<small class="task-project-caption">${esc(t.projectName || projectOf(t.projectId).name)}</small></span></span></td><td><span class="person-cell">${avatarStack(t.assignees||[])} <small>${faNum(t.assignees?.length||0)}</small></span></td><td>${priorityPill(t.priority)}</td><td>${statusPill(t.status)}</td><td><span class="task-due ${overdue(t)?'late':''}">${fmtDate(t.dueDate)}</span></td><td><small>${faNum(t.attachmentCount||0)} فایل · ${faNum(t.checklistDone||0)}/${faNum(t.checklist||0)}</small></td></tr>`).join('') || `<tr><td colspan="6">${empty('list-checks','کاری پیدا نشد','فیلترها را تغییر دهید یا یک کار تازه بسازید.')}</td></tr>`}</tbody></table></div></section>`;
   }
   function renderBoard() {
     const tasks = tasksFiltered(false);
@@ -847,7 +966,7 @@
     return `${heading('پروژه‌ها','کارهای مرتبط با یک نتیجه یا ابتکار را کنار هم نگه دارید.', canDo('projects.create')?`<button class="primary-button" data-action="new-project"><i data-lucide="plus"></i> پروژه جدید</button>`:'')}<div class="data-grid">${cards || empty('folder-kanban','پروژه‌ای ساخته نشده','برای یک هدف مشترک، اولین پروژه را ایجاد کنید.')}</div>`;
   }
   function renderTeams() {
-    const teamCards = state.teams.map(t=>{const online=(state.remotePresence||[]).filter(p=>(t.memberIds||[]).includes(p.user_id));return `<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="users-round"></i></span><span class="quiet-tag">${faNum(t.members?.length||0)} عضو · ${faNum(online.length)} آنلاین</span></div><h3>${esc(t.name)}</h3><p>${esc(t.description||'بدون توضیحات')}</p><div class="avatar-stack" style="margin-top:15px">${(t.members||[]).slice(0,6).map(u=>avatar(u,'avatar-xs')).join('')}</div>${online.length?`<div class="team-online-list">${online.slice(0,4).map(p=>`<button class="online-person" data-presence-jump="${esc(p.page)}" title="رفتن به صفحه ${esc(p.page)}"><i style="--person-color:${esc(p.cursor_color||'#47765e')}"></i>${esc(p.name)}</button>`).join('')}</div>`:'<small class="form-hint">در حال حاضر عضوی آنلاین نیست.</small>'}<div class="data-card-actions">${canDo('teams.manage')?`<button class="secondary-button" data-manage-team="${esc(t.id)}">مدیریت اعضا</button><button class="icon-button" data-delete-team="${esc(t.id)}" title="حذف تیم"><i data-lucide="trash-2"></i></button>`:''}</div></article>`}).join('');
+    const teamCards = state.teams.map(t=>{const online=(state.remotePresence||[]).filter(p=>(t.memberIds||[]).includes(p.user_id));return `<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="users-round"></i></span><span class="quiet-tag">${faNum(t.members?.length||0)} عضو · ${faNum(online.length)} آنلاین</span></div><h3>${esc(t.name)}</h3><p>${esc(t.description||'بدون توضیحات')}</p><div class="avatar-stack" style="margin-top:15px">${(t.members||[]).slice(0,6).map(u=>avatar(u,'avatar-xs')).join('')}</div>${online.length?`<div class="team-online-list">${online.slice(0,4).map(p=>`<button class="online-person" data-presence-jump="${esc(p.page)}" title="رفتن به صفحه ${esc(p.page)}"><i style="--person-color:${esc(p.cursor_color||'var(--presence-fallback-color)')}"></i>${esc(p.name)}</button>`).join('')}</div>`:'<small class="form-hint">در حال حاضر عضوی آنلاین نیست.</small>'}<div class="data-card-actions">${canDo('teams.manage')?`<button class="secondary-button" data-manage-team="${esc(t.id)}">مدیریت اعضا</button><button class="icon-button" data-delete-team="${esc(t.id)}" title="حذف تیم"><i data-lucide="trash-2"></i></button>`:''}</div></article>`}).join('');
     const members = state.users.map(u=>`<div class="team-member-row">${avatar(u)}<div class="member-info"><strong>${esc(u.name)}</strong><small>${esc(u.email)}</small></div>${rolePill(u.custom_role_id?'custom':u.role,u.roleName,u.roleColor||u.role_color)}<span class="quiet-tag">${faNum(u.open_tasks||0)} کار باز</span>${canDo('members.manage')&&u.role!=='owner'?`<button class="text-button" data-change-member-role="${esc(u.id)}">تغییر نقش</button>`:''}</div>`).join('');
     const invites = state.invitations.map(i=>`<div class="invite-row"><strong>${esc(i.email)}</strong><small>${roleLabel(i.role)} · انقضا ${fmtDate(i.expires_at?.slice(0,10))}</small><button class="icon-button" data-revoke-invite="${esc(i.id)}" title="لغو دعوت"><i data-lucide="x"></i></button></div>`).join('');
     const joinLinks = (state.joinLinks||[]).map(l=>`<div class="invite-row"><strong><i data-lucide="link-2" class="inline-icon"></i> لینک عضویت ${roleLabel(l.role)}</strong><small>انقضا ${fmtDate(l.expires_at?.slice(0,10))} · استفاده ${l.max_uses?`${faNum(l.use_count)} از ${faNum(l.max_uses)}`:`${faNum(l.use_count)} · نامحدود`}</small><button class="icon-button" data-revoke-join-link="${esc(l.id)}" title="لغو لینک"><i data-lucide="x"></i></button></div>`).join('');
@@ -864,11 +983,11 @@
     return h ? `${faNum(h)}:${String(m).padStart(2,'0')}` : `${faNum(m)} دقیقه${sec>=0&&m===0?` و ${faNum(sec)} ثانیه`:''}`;
   }
   function renderRecurring() {
-    const cards=(state.recurringRules||[]).map(r=>`<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="repeat"></i></span><span class="quiet-tag">${r.is_active?'فعال':'متوقف'}</span></div><h3>${esc(r.title)}</h3><p>${esc(r.description||'بدون توضیحات')}</p><div class="recurring-meta"><span>${({daily:'روزانه',weekly:'هفتگی',monthly:'ماهانه'})[r.cadence]} · هر ${faNum(r.interval_count)} دوره</span><strong>بعدی: ${fmtDate(r.next_run_on)}</strong></div><div class="data-card-actions">${canDo('recurring.manage')?`<button class="secondary-button" data-toggle-recurring="${esc(r.id)}">${r.is_active?'توقف':'فعال‌سازی'}</button><button class="icon-button" data-delete-recurring="${esc(r.id)}"><i data-lucide="trash-2"></i></button>`:''}</div></article>`).join('');
+    const cards=(state.recurringRules||[]).map(r=>`<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="repeat"></i></span><span class="quiet-tag">${r.is_active?'فعال':'متوقف'}</span></div><h3>${esc(r.title)}</h3><p>${esc(r.description||'بدون توضیحات')}</p><div class="recurring-meta"><span>${({daily:'روزانه',weekly:'هفتگی',monthly:'ماهانه'})[r.cadence]} · هر ${faNum(r.interval_count)} دوره</span><strong>بعدی: ${fmtDate(r.next_run_on)}</strong></div><div class="data-card-actions">${canDo('recurring.manage')?`<button class="secondary-button" data-toggle-recurring="${esc(r.id)}">${r.is_active?'توقف':'فعال‌سازی'}</button><button type="button" class="icon-button" data-delete-recurring="${esc(r.id)}" aria-label="حذف قانون تکرار" title="حذف قانون تکرار"><i data-lucide="trash-2"></i></button>`:''}</div></article>`).join('');
     return `${heading('کارهای تکرارشونده','برای کارهایی که طبق برنامه دوباره انجام می‌شوند، قانون بسازید.',canDo('recurring.manage')?'<button class="primary-button" data-action="new-recurring"><i data-lucide="plus"></i> قانون جدید</button>':'')}<div class="data-grid">${cards||empty('repeat','قانون تکراری ندارید','یک کار روزانه، هفتگی یا ماهانه تعریف کنید.')}</div><p class="form-hint recurring-footnote">کارهای سررسیدشده هنگام بازشدن فضای کار ساخته می‌شوند. رایانه میزبان و سرویس BottleNeck باید روشن باشند.</p>`;
   }
   function renderTemplates() {
-    const cards=(state.templates||[]).map(t=>`<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="copy-check"></i></span><span class="quiet-tag">${faNum(t.checklist?.length||0)} قدم</span></div><h3>${esc(t.name)}</h3><p>${esc(t.description||t.title)}</p><div class="recurring-meta"><span>${esc(t.title)}</span><strong>${esc(priorityOf(t.priority).label)}</strong></div><div class="data-card-actions"><button class="primary-button" data-use-template="${esc(t.id)}"><i data-lucide="plus"></i> ساخت کار</button>${canDo('templates.manage')?`<button class="icon-button" data-delete-template="${esc(t.id)}"><i data-lucide="trash-2"></i></button>`:''}</div></article>`).join('');
+    const cards=(state.templates||[]).map(t=>`<article class="data-card"><div class="data-card-top"><span class="project-mark"><i data-lucide="copy-check"></i></span><span class="quiet-tag">${faNum(t.checklist?.length||0)} قدم</span></div><h3>${esc(t.name)}</h3><p>${esc(t.description||t.title)}</p><div class="recurring-meta"><span>${esc(t.title)}</span><strong>${esc(priorityOf(t.priority).label)}</strong></div><div class="data-card-actions"><button class="primary-button" data-use-template="${esc(t.id)}"><i data-lucide="plus"></i> ساخت کار</button>${canDo('templates.manage')?`<button type="button" class="icon-button" data-delete-template="${esc(t.id)}" aria-label="حذف قالب" title="حذف قالب"><i data-lucide="trash-2"></i></button>`:''}</div></article>`).join('');
     return `${heading('قالب‌های کار','کارهای پرتکرار را یک‌بار طراحی کنید و هر بار از همان ساختار استفاده کنید.',canDo('templates.manage')?'<button class="primary-button" data-action="new-template"><i data-lucide="plus"></i> قالب جدید</button>':'')}<div class="data-grid">${cards||empty('copy-check','قالبی ساخته نشده','برای یک فرایند تکراری، قالب استاندارد بسازید.')}</div>`;
   }
   function renderReports() {
@@ -902,7 +1021,7 @@
         <h2>۱۲. پشتیبان‌گیری</h2><p>مالک نصب یا اپراتور مجاز از صفحه «مدیریت سرور» نسخه دستی می‌سازد؛ پشتیبان خودکار به‌طور پیش‌فرض هر ۲۴ ساعت اجرا و ۱۴ نسخه نگهداری می‌کند. بازیابی کامل فقط از CLI محلی و در حالت توقف سرور انجام می‌شود: دستور restore-backup را با گزینه‌های --confirm-offline و --yes اجرا کنید. راهنمای کامل در HANDBOOK.md و بخش مدیریت سرور قرار دارد.</p>
         <h2>۱۳. SMTP، HTTPS و شبکه</h2><p>برای ایمیل متغیرهای <code>BOTTLENECK_SMTP_HOST</code>، <code>BOTTLENECK_SMTP_PORT</code>، <code>BOTTLENECK_SMTP_FROM</code> و در صورت نیاز نام کاربری/گذرواژه را تنظیم کنید. برای HTTPS می‌توانید گواهی و کلید را با <code>BOTTLENECK_SSL_CERTFILE</code> و <code>BOTTLENECK_SSL_KEYFILE</code> به لانچر بدهید. بدون HTTPS، برنامه فقط برای شبکه محلی مورد اعتماد در نظر گرفته شده است؛ پورت ۱۹۳۹ را به اینترنت فوروارد نکنید.</p>
         <h2>۱۴. محدودیت‌های نسخه MVP</h2><ul><li>پشتیبان‌گیری داخل نصب و نگهداری محلی است؛ کپی خارج از دستگاه یا فضای ابری خودکار نیست.</li><li>ارسال ایمیل تنها با SMTP تنظیم‌شده کار می‌کند؛ تأیید ایمیل و دامنه ارسال درون برنامه وجود ندارد.</li><li>کدهای TOTP در پایگاه داده نصب نگهداری می‌شوند؛ از پوشه data محافظت فیزیکی و دسترسی فایل انجام دهید.</li><li>فایل‌ها اسکن ضدبدافزار نمی‌شوند. فایل‌های ناشناس را باز نکنید.</li><li>پیش‌نمایش غنی Markdown به CDNهای خارجی وابسته است.</li><li>هم‌ویرایشی کاراکتر به کاراکتر و تاریخچه نسخه یادداشت وجود ندارد.</li><li>گزارش‌ها و اجرای قواعد تکرار بر اساس UTC هستند.</li><li>این نسخه برای استفاده تیمی روی LAN/شبکه خصوصی آماده شده؛ برای انتشار عمومی اینترنتی، reverse proxy سخت‌سازی‌شده، HTTPS معتبر، فایروال، پشتیبان خارج از میزبان و ارزیابی امنیتی مستقل لازم است.</li></ul>
-        <h2>۱۵. نسخه‌ها</h2><h3>v1.0.0 · انتشار پایدار</h3><ul><li>خروج از مرحله آزمایشی و انتشار پایدار برای نصب خودمیزبان در شبکه خصوصی.</li><li>محدودسازی درخواست‌های ثبت‌نام، ورود، ورود دومرحله‌ای و بازیابی گذرواژه.</li><li>بررسی Origin و Fetch Metadata برای درخواست‌های تغییردهنده داده، سیاست امنیت محتوا و گزارش‌های چرخشی.</li><li>راهنمای استقرار، سیاست امنیت، مجوز MIT، راهنمای مشارکت و گردش کار CI در مخزن.</li><li>مستندات به‌روزرسانی، معماری و مدیریت سرور با نسخه ۱.۰.۰ هماهنگ شدند.</li></ul><h3>v0.7.0 · هویت، نقش و حضور تیم</h3><ul><li>ورود مرا به خاطر بسپار با نشست پایدار ۳۰روزه یا نشست عادی ۱۲ساعته سمت سرور.</li><li>تصویر پروفایل هنگام ثبت‌نام و از تنظیمات؛ حداکثر ۳ مگابایت.</li><li>کد عضویت هشت‌نویسه‌ای با اعتبار ۱۵ دقیقه و سقف استفاده پیش‌فرض یک‌بار؛ حساب موجود بدون حساب تکراری می‌پیوندد.</li><li>نقش‌های سفارشی و فهرست مجوزهای مستقل در سطح API.</li><li>فهرست آنلاین تیم و مکان‌نمای رنگی/نام‌دار با به‌روزرسانی دوره‌ای.</li><li>چیدمان تازه چت و اصلاح به‌روزرسانی فهرست آنلاین بدون پاک‌شدن پیش‌نویس.</li></ul><h3>v0.8.0 · ارتباط و دانش تیمی</h3><p>ویرایشگر Markdown با پیش‌نمایش زنده، منشن، فایل و رسانه، پیام صوتی، پیوند کار/یادداشت/فایل و جست‌وجوی چت.</p><h3>v0.9.0 · مدیریت سرور و جابه‌جایی داده</h3><p>CLI مستقل، مدیر اصلی نصب در راه‌اندازی اولیه، GUI مدیریت سرور، سلامت دیتابیس، فضای ذخیره‌سازی، گزارش‌های عملیاتی، مدیریت اپراتور/ناظر، پشتیبان‌گیری، بازیابی و ورود/خروج انتخابی داده‌ها.</p><h3>v0.6.1 · عضویت امن و تقویم شمسی</h3><ul><li>لینک عضویت امن برای پیوستن حساب‌های تازه و حساب‌های موجود به فضای کاری.</li><li>رفع محدودیت دعوت ایمیلی برای کاربرانی که از قبل حساب BottleNeck دارند؛ کاربر موجود با ورود به حساب، دعوت را می‌پذیرد.</li><li>توکن عضویت با مولد رمزنگاری امن ساخته می‌شود و فقط هش آن در پایگاه داده ذخیره می‌شود؛ امکان انقضا و لغو لینک.</li><li>نمایش تاریخ‌ها و تقویم ماهانه بر اساس تقویم هجری شمسی و ورود موعد کار/تکرار به صورت شمسی.</li><li>بازطراحی امضای سازنده با پس‌زمینه مشکی، پیوندهای روشن و هدایت خودکار پنج‌ثانیه‌ای به GitHub با امکان ماندن در برنامه.</li></ul><h3>v0.6.0 · MVP admin and reliability</h3><ul><li>چند فضای کاری برای هر حساب و انتخاب/تعویض فضای فعال.</li><li>مجوزهای قابل تنظیم برای نقش‌های مدیر و عضو.</li><li>مجوز خواندن/نوشتن بر اساس نقش برای فایل‌ها و پوشه‌های مشترک.</li><li>ورود دومرحله‌ای TOTP با ۱۰ کد بازیابی یک‌بارمصرف و محدودیت تلاش.</li><li>لینک بازنشانی گذرواژه با انقضای ۳۰ دقیقه و ارسال SMTP اختیاری.</li><li>اتصال رویدادهای احراز هویت‌شده از طریق WebSocket.</li><li>پشتیبان‌گیری خودکار/دستی از پایگاه داده و فایل‌ها و نگهداری نسخه‌های اخیر.</li><li>تنظیمات اعلان ایمیلی، راه‌اندازی HTTPS و مستندات نصب/بازیابی.</li></ul>
+        <h2>۱۵. نسخه‌ها</h2><h3>v1.1.0 · یکپارچگی تجربه کاربری</h3><ul><li>یکسان‌سازی اجزای مشترک فرم، دکمه، پنجره، اعلان و گفت‌وگو با توکن‌های طراحی.</li><li>جایگزینی prompt و confirm مرورگر با پنجره‌های درون‌برنامه‌ای دارای اعتبارسنجی.</li><li>مدیریت فوکوس، قفل حرکت فوکوس در پنجره‌ها، بازگردانی فوکوس و پشتیبانی Escape.</li><li>بهبود عنوان صفحه فعال، لینک پرش به محتوا، اندازه متن و حرکت کاهش‌یافته.</li><li>افزودن ممیزی خودکار UI برای جلوگیری از بازگشت الگوهای ناسازگار.</li></ul><h3>v1.0.0 · انتشار پایدار</h3><ul><li>خروج از مرحله آزمایشی و انتشار پایدار برای نصب خودمیزبان در شبکه خصوصی.</li><li>محدودسازی درخواست‌های ثبت‌نام، ورود، ورود دومرحله‌ای و بازیابی گذرواژه.</li><li>بررسی Origin و Fetch Metadata برای درخواست‌های تغییردهنده داده، سیاست امنیت محتوا و گزارش‌های چرخشی.</li><li>راهنمای استقرار، سیاست امنیت، مجوز MIT، راهنمای مشارکت و گردش کار CI در مخزن.</li><li>ممیزی یکپارچگی رابط، قواعد طراحی، دسترس‌پذیری صفحه‌کلید و گفت‌وگوهای استانداردشده به نسخه ۱.۱.۰ افزوده شدند.</li></ul><h3>v0.7.0 · هویت، نقش و حضور تیم</h3><ul><li>ورود مرا به خاطر بسپار با نشست پایدار ۳۰روزه یا نشست عادی ۱۲ساعته سمت سرور.</li><li>تصویر پروفایل هنگام ثبت‌نام و از تنظیمات؛ حداکثر ۳ مگابایت.</li><li>کد عضویت هشت‌نویسه‌ای با اعتبار ۱۵ دقیقه و سقف استفاده پیش‌فرض یک‌بار؛ حساب موجود بدون حساب تکراری می‌پیوندد.</li><li>نقش‌های سفارشی و فهرست مجوزهای مستقل در سطح API.</li><li>فهرست آنلاین تیم و مکان‌نمای رنگی/نام‌دار با به‌روزرسانی دوره‌ای.</li><li>چیدمان تازه چت و اصلاح به‌روزرسانی فهرست آنلاین بدون پاک‌شدن پیش‌نویس.</li></ul><h3>v0.8.0 · ارتباط و دانش تیمی</h3><p>ویرایشگر Markdown با پیش‌نمایش زنده، منشن، فایل و رسانه، پیام صوتی، پیوند کار/یادداشت/فایل و جست‌وجوی چت.</p><h3>v0.9.0 · مدیریت سرور و جابه‌جایی داده</h3><p>CLI مستقل، مدیر اصلی نصب در راه‌اندازی اولیه، GUI مدیریت سرور، سلامت دیتابیس، فضای ذخیره‌سازی، گزارش‌های عملیاتی، مدیریت اپراتور/ناظر، پشتیبان‌گیری، بازیابی و ورود/خروج انتخابی داده‌ها.</p><h3>v0.6.1 · عضویت امن و تقویم شمسی</h3><ul><li>لینک عضویت امن برای پیوستن حساب‌های تازه و حساب‌های موجود به فضای کاری.</li><li>رفع محدودیت دعوت ایمیلی برای کاربرانی که از قبل حساب BottleNeck دارند؛ کاربر موجود با ورود به حساب، دعوت را می‌پذیرد.</li><li>توکن عضویت با مولد رمزنگاری امن ساخته می‌شود و فقط هش آن در پایگاه داده ذخیره می‌شود؛ امکان انقضا و لغو لینک.</li><li>نمایش تاریخ‌ها و تقویم ماهانه بر اساس تقویم هجری شمسی و ورود موعد کار/تکرار به صورت شمسی.</li><li>بازطراحی امضای سازنده با پس‌زمینه مشکی، پیوندهای روشن و هدایت خودکار پنج‌ثانیه‌ای به GitHub با امکان ماندن در برنامه.</li></ul><h3>v0.6.0 · MVP admin and reliability</h3><ul><li>چند فضای کاری برای هر حساب و انتخاب/تعویض فضای فعال.</li><li>مجوزهای قابل تنظیم برای نقش‌های مدیر و عضو.</li><li>مجوز خواندن/نوشتن بر اساس نقش برای فایل‌ها و پوشه‌های مشترک.</li><li>ورود دومرحله‌ای TOTP با ۱۰ کد بازیابی یک‌بارمصرف و محدودیت تلاش.</li><li>لینک بازنشانی گذرواژه با انقضای ۳۰ دقیقه و ارسال SMTP اختیاری.</li><li>اتصال رویدادهای احراز هویت‌شده از طریق WebSocket.</li><li>پشتیبان‌گیری خودکار/دستی از پایگاه داده و فایل‌ها و نگهداری نسخه‌های اخیر.</li><li>تنظیمات اعلان ایمیلی، راه‌اندازی HTTPS و مستندات نصب/بازیابی.</li></ul>
         <h3>v0.5.0 · فضای مشترک و دانش تیمی</h3><p>برد ایده، فایل‌ها و پوشه‌های مشترک، یادداشت Markdown، سطوح دسترسی workspace/team/password، بارگذاری با نوار پیشرفت، گفت‌وگوی تیمی و گزارش فعالیت.</p>
         <h3>v0.4.0 · بهره‌وری</h3><p>زمان‌سنج، گزارش روزانه/هفتگی، کار تکرارشونده، قالب، پیش‌نیاز، تأیید و وضعیت سفارشی.</p>
         <h3>v0.3.0 · همکاری و LAN</h3><p>چند مسئول، چک‌لیست، پیوست، اعلان، عضویت تیم، راه‌اندازی شبکه محلی و امضای سازنده.</p>
@@ -980,7 +1099,7 @@
   }
 
   function renderSettings() {
-    const urls = state.network?.urls?.length ? state.network.urls.map(url=>`<div class="network-address"><code>${esc(url)}</code><button data-copy="${esc(url)}" title="کپی"><i data-lucide="copy"></i></button></div>`).join('') : `<p class="form-hint">IP شبکه در دسترس نیست؛ اتصال localhost همچنان فعال است.</p>`;
+    const urls = state.network?.urls?.length ? state.network.urls.map(url=>`<div class="network-address"><code>${esc(url)}</code><button type="button" data-copy="${esc(url)}" aria-label="کپی نشانی شبکه" title="کپی نشانی شبکه"><i data-lucide="copy"></i></button></div>`).join('') : `<p class="form-hint">IP شبکه در دسترس نیست؛ اتصال localhost همچنان فعال است.</p>`;
     const localUrl = `${window.location.protocol}//127.0.0.1:${state.network?.port||1939}`;
     const sec = state.security || {};
     const pref = state.notificationPrefs || {email_enabled:0,assigned_enabled:1,mentions_enabled:1,deadlines_enabled:1};
@@ -988,10 +1107,10 @@
     const permissionRows = (state.rolePermissions||[]).filter(x=>x.role!=='owner');
     const permissionsUi = canDo('permissions.manage') ? `<section class="panel status-settings"><div class="panel-heading"><h2>مجوزهای نقش‌ها</h2><small>کنترل دسترسی مدیر و عضو</small></div><form id="rolePermissionsForm" class="permission-matrix">${['admin','member'].map(role=>`<div class="permission-role"><strong>${roleLabel(role)}</strong>${Object.keys(roleLabels).map(key=>{const item=permissionRows.find(x=>x.role===role&&x.permission_key===key);return `<label class="permission-check"><input type="checkbox" name="${role}:${key}" ${item?.allowed?'checked':''}/><span>${roleLabels[key]}</span></label>`;}).join('')}</div>`).join('')}<div class="modal-footer"><button class="primary-button" type="submit">ذخیره مجوزها</button></div></form><p class="form-hint">مالک همیشه دسترسی کامل دارد. تغییر مجوزهای مدیر ممکن است دسترسی مدیریتی را محدود کند.</p></section>` : '';
     const customRoleUi = canDo('permissions.manage') ? `<section class="panel status-settings"><div class="panel-heading"><div><h2>نقش‌های سفارشی</h2><small>نقش‌های تخصصی با مجوزهای دقیق بسازید و به اعضا اختصاص دهید.</small></div><button type="button" class="secondary-button" data-action="new-custom-role"><i data-lucide="shield-plus"></i> نقش تازه</button></div><div class="custom-role-list">${(state.customRoles||[]).map(r=>`<div class="custom-role-row"><span class="role-color-dot" style="background:${esc(r.color)}"></span><span><strong>${esc(r.name)}</strong><small>مبنای ${roleLabel(r.base_role)} · ${faNum(r.permission_count||0)} مجوز</small></span><button class="text-button" data-edit-custom-role="${esc(r.id)}">مجوزها</button><button class="icon-button" data-delete-custom-role="${esc(r.id)}" title="حذف نقش"><i data-lucide="trash-2"></i></button></div>`).join('')||'<p class="form-hint">هنوز نقش سفارشی نساخته‌اید.</p>'}</div></section>` : '';
-    // Full-installation backups moved to the dedicated Server Administration page in v1.0.0.
+    // Full-installation backups moved to the dedicated Server Administration page in v1.1.0.
     return `${heading('تنظیمات','امنیت حساب، فضاهای کاری، مجوزها و سلامت داده‌ها.')}
       <div class="settings-grid"><section class="panel settings-card"><div class="settings-icon"><i data-lucide="user-round"></i></div><h2>اطلاعات شخصی</h2><p>نام نمایشی شما در فعالیت‌ها، اعلان‌ها و کارها نمایش داده می‌شود.</p><div class="profile-photo-setting"><span class="avatar avatar-profile-preview">${state.me.avatarUrl?`<img src="${esc(state.me.avatarUrl)}" alt="" />`:esc(initials(state.me.name).slice(0,1))}</span><div><strong>تصویر نمایه</strong><small>PNG، JPG، WebP یا GIF · حداکثر ۳ مگابایت</small><label class="secondary-button avatar-pick">انتخاب تصویر<input id="avatarUploadInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>${state.me.avatarUrl?'<button type="button" class="text-button" data-action="remove-avatar">حذف تصویر</button>':''}</div></div><form id="profileForm" class="form-stack"><label class="field"><span>نام نمایشی</span><input id="profileNameInput" required minlength="2" maxlength="80" value="${esc(state.me.name)}" /></label><label class="field"><span>ایمیل حساب</span><input disabled value="${esc(state.me.email)}" /></label><button class="secondary-button" type="submit">ذخیره تغییرات</button></form></section>
-      <section class="panel settings-card"><div class="settings-icon"><i data-lucide="network"></i></div><h2>دسترسی شبکه محلی</h2><p>از دستگاه‌های دیگر متصل به همین شبکه Wi-Fi یا LAN، یکی از این نشانی‌ها را باز کنید.</p><div class="setting-data"><span>وضعیت</span><strong class="live-indicator">سرور در حال اجرا</strong></div>${urls}<div class="network-address"><code>${esc(localUrl)}</code><button data-copy="${esc(localUrl)}"><i data-lucide="copy"></i></button></div><p class="form-hint">برای HTTPS، مسیر گواهی و کلید را در متغیرهای BOTTLENECK_SSL_CERTFILE و BOTTLENECK_SSL_KEYFILE تنظیم کنید.</p></section>
+      <section class="panel settings-card"><div class="settings-icon"><i data-lucide="network"></i></div><h2>دسترسی شبکه محلی</h2><p>از دستگاه‌های دیگر متصل به همین شبکه Wi-Fi یا LAN، یکی از این نشانی‌ها را باز کنید.</p><div class="setting-data"><span>وضعیت</span><strong class="live-indicator">سرور در حال اجرا</strong></div>${urls}<div class="network-address"><code>${esc(localUrl)}</code><button type="button" data-copy="${esc(localUrl)}" aria-label="کپی نشانی محلی" title="کپی نشانی محلی"><i data-lucide="copy"></i></button></div><p class="form-hint">برای HTTPS، مسیر گواهی و کلید را در متغیرهای BOTTLENECK_SSL_CERTFILE و BOTTLENECK_SSL_KEYFILE تنظیم کنید.</p></section>
       <section class="panel settings-card"><div class="settings-icon"><i data-lucide="database"></i></div><h2>نسخه و داده‌ها</h2><p>اطلاعات فضا روی سرور میزبان ذخیره می‌شود. از پوشه data و backups مراقبت کنید.</p><div class="setting-data"><span>نسخه</span><strong>BottleNeck v${VERSION}</strong></div><div class="setting-data"><span>پایگاه داده</span><code>data/bottleneck.sqlite3</code></div><span class="version-tag">SQLite · FastAPI · WebSocket · LAN :${faNum(state.network?.port||1939)}</span></section>
       <section class="panel settings-card"><div class="settings-icon"><i data-lucide="shield-check"></i></div><h2>امنیت حساب</h2><p>برای ورود دومرحله‌ای از Google Authenticator، 1Password یا برنامه TOTP سازگار استفاده کنید.</p><div class="setting-data"><span>تأیید دومرحله‌ای</span><strong>${sec.twoFactorEnabled?'فعال':'غیرفعال'}</strong></div>${sec.twoFactorEnabled?'<button class="danger-button" data-action="disable-2fa">غیرفعال‌سازی تأیید دومرحله‌ای</button>':'<button class="secondary-button" data-action="setup-2fa">راه‌اندازی تأیید دومرحله‌ای</button>'}<p class="form-hint">کلید و کدهای بازیابی را محرمانه نگه دارید. هر کد بازیابی فقط یک‌بار قابل استفاده است. کدهای باقی‌مانده: ${faNum(sec.recoveryCodesRemaining||0)}</p></section>
       <section class="panel settings-card"><div class="settings-icon"><i data-lucide="mail"></i></div><h2>اعلان‌های ایمیلی</h2><p>${sec.emailConfigured?'ارسال ایمیل روی سرور تنظیم شده است.':'برای ارسال ایمیل، متغیرهای SMTP را در محیط سرور تنظیم کنید.'}</p><form id="notificationPrefsForm" class="form-stack"><label class="permission-check"><input type="checkbox" name="email_enabled" ${pref.email_enabled?'checked':''}/><span>ارسال اعلان به ایمیل من</span></label><label class="permission-check"><input type="checkbox" name="assigned_enabled" ${pref.assigned_enabled?'checked':''}/><span>واگذاری کار</span></label><label class="permission-check"><input type="checkbox" name="mentions_enabled" ${pref.mentions_enabled?'checked':''}/><span>اشاره و گفتگو</span></label><label class="permission-check"><input type="checkbox" name="deadlines_enabled" ${pref.deadlines_enabled?'checked':''}/><span>یادآوری موعدها</span></label><button class="secondary-button" type="submit">ذخیره تنظیمات اعلان</button></form></section></div>
@@ -1092,7 +1211,7 @@
     let role=null;
     if(roleId){try{role=(await api('/api/custom-roles')).items.find(r=>r.id===roleId)||null;}catch(e){toast(e.message,'alert-circle');return;}}
     const selected=(role?.permissions||[]).filter(p=>p.allowed).map(p=>p.permission_key);
-    showModal(role?'ویرایش مجوزهای نقش':'ساخت نقش سفارشی',`<form id="customRoleForm" data-role-id="${esc(roleId||'')}" class="form-stack"><label class="field"><span>نام نقش</span><input name="name" minlength="2" maxlength="40" required ${role?'readonly':''} value="${esc(role?.name||'')}" placeholder="مثلاً ناظر محتوا" /></label><div class="form-grid"><label class="field"><span>نقش پایه</span><select name="base_role" ${role?'disabled':''}><option value="member" ${role?.base_role==='member'?'selected':''}>عضو</option><option value="admin" ${role?.base_role==='admin'?'selected':''}>مدیر</option></select></label><label class="field"><span>رنگ نقش</span><input type="color" name="color" value="${esc(role?.color||'#8b6bb1')}" ${role?'disabled':''} /></label></div><strong>مجوزهای این نقش</strong><div class="custom-permission-grid">${permissionChecks(role?selected:['tasks.create','tasks.update','comments.create','chat.send','reports.view'])}</div><div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">${role?'ذخیره مجوزها':'ساخت نقش'}</button></div></form>`,'مدیریت دسترسی');
+    showModal(role?'ویرایش مجوزهای نقش':'ساخت نقش سفارشی',`<form id="customRoleForm" data-role-id="${esc(roleId||'')}" class="form-stack"><label class="field"><span>نام نقش</span><input name="name" minlength="2" maxlength="40" required ${role?'readonly':''} value="${esc(role?.name||'')}" placeholder="مثلاً ناظر محتوا" /></label><div class="form-grid"><label class="field"><span>نقش پایه</span><select name="base_role" ${role?'disabled':''}><option value="member" ${role?.base_role==='member'?'selected':''}>عضو</option><option value="admin" ${role?.base_role==='admin'?'selected':''}>مدیر</option></select></label><label class="field"><span>رنگ نقش</span><input type="color" name="color" value="${esc(role?.color||DEFAULT_ROLE_COLOR)}" ${role?'disabled':''} /></label></div><strong>مجوزهای این نقش</strong><div class="custom-permission-grid">${permissionChecks(role?selected:['tasks.create','tasks.update','comments.create','chat.send','reports.view'])}</div><div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">${role?'ذخیره مجوزها':'ساخت نقش'}</button></div></form>`,'مدیریت دسترسی');
   }
   function openMemberRoleEditor(memberId){const member=state.users.find(x=>x.id===memberId);if(!member)return;const options=`<option value="member" ${!member.custom_role_id&&member.role==='member'?'selected':''}>عضو</option>${canDo('members.manage')?`<option value="admin" ${!member.custom_role_id&&member.role==='admin'?'selected':''}>مدیر</option>`:''}${(state.customRoles||[]).map(r=>`<option value="custom:${esc(r.id)}" ${member.custom_role_id===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}`;showModal('تغییر نقش عضو',`<form id="memberRoleForm" data-member-id="${esc(memberId)}" class="form-stack"><p class="form-hint">تغییر نقش برای <strong>${esc(member.name)}</strong> اعمال می‌شود.</p><label class="field"><span>نقش جدید</span><select name="role">${options}</select></label><div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>انصراف</button><span class="spacer"></span><button class="primary-button">ذخیره نقش</button></div></form>`,'اعضای فضای کار');}
 
@@ -1118,15 +1237,29 @@
     const html = `<div class="panel-heading"><small>${faNum(result.unread)} خوانده‌نشده</small><button class="text-button" data-action="read-all">خواندن همه</button></div><div class="notification-list">${result.items.map(n=>`<div class="notification-item ${n.is_read?'':'unread'}" data-notification="${esc(n.id)}" data-entity="${esc(n.entity_id||'')}"><i data-lucide="${n.kind==='comment'?'message-circle':n.kind==='member'?'user-plus':'bell'}"></i><div class="notification-copy"><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><small>${fmtTime(n.created_at)}${n.actor_name?' · '+esc(n.actor_name):''}</small></div>${n.is_read?'':'<span class="unread-dot"></span>'}</div>`).join('') || empty('bell','اعلانی ندارید','واگذاری‌ها و گفتگوهای تازه در اینجا نمایش داده می‌شوند.')}</div>`;
     showModal('اعلان‌ها',html,'مرکز اعلان');
   }
-  function openTour() { state.tourStep=0; $('tourBackdrop').classList.remove('hidden'); drawTour(); }
+  function openTour() {
+    state.tourStep=0;
+    state.tourPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    $('tourBackdrop').classList.remove('hidden'); $('tourBackdrop').setAttribute('aria-hidden', 'false');
+    setOverlayBackground(true); drawTour();
+    requestAnimationFrame(() => focusInside($('tourCard')));
+  }
   function drawTour() {
     const [title,text] = TOUR[state.tourStep]; $('tourStepLabel').textContent=`گام ${faNum(state.tourStep+1)} از ${faNum(TOUR.length)}`;
     $('tourTitle').textContent=title; $('tourText').textContent=text;
     $('tourProgress').innerHTML=TOUR.map((_,i)=>`<span class="${i<=state.tourStep?'active':''}"></span>`).join('');
     $('tourPrev').disabled=state.tourStep===0; $('tourNext').innerHTML=state.tourStep===TOUR.length-1?'پایان <i data-lucide="check"></i>':'بعدی <i data-lucide="arrow-left"></i>'; iconRefresh();
   }
-  async function finishTour() { $('tourBackdrop').classList.add('hidden'); await api('/api/me/onboarding',{method:'POST',body:{completed:true}}).catch(()=>{}); }
-  async function navigate(page) { if(!PAGES[page]) return; if(state.page==='team-chat'&&page!=='team-chat'&&state.chatRecorder?.state==='recording'){state.chatRecorder.stop();toast('ضبط صدا متوقف و فایل آماده ارسال می‌شود.','mic');} state.page=page; if(state.page!=='my-tasks'&&state.page!=='all-tasks') state.taskFilter='all'; render(); $('sidebar').classList.remove('open');
+  async function finishTour() {
+    $('tourBackdrop').classList.add('hidden'); $('tourBackdrop').setAttribute('aria-hidden', 'true');
+    setOverlayBackground(false);
+    const previous = state.tourPreviousFocus; state.tourPreviousFocus = null;
+    if (previous?.isConnected) previous.focus({ preventScroll: true });
+    await api('/api/me/onboarding',{method:'POST',body:{completed:true}}).catch(()=>{});
+  }
+  async function navigate(page) { if(!PAGES[page]) return; if(state.page==='team-chat'&&page!=='team-chat'&&state.chatRecorder?.state==='recording'){state.chatRecorder.stop();toast('ضبط صدا متوقف و فایل آماده ارسال می‌شود.','mic');} state.page=page; if(state.page!=='my-tasks'&&state.page!=='all-tasks') state.taskFilter='all'; render(); closeMobileNav();
+    document.title = `${PAGES[state.page] || 'نمای کلی'} | BottleNeck`;
+    requestAnimationFrame(()=>$('pageHeading')?.focus({preventScroll:true}));
     api('/api/presence',{method:'POST',body:{page,team_id:activePresenceTeam()}}).catch(()=>{});
     refreshPresence();
     if(page==='server-admin') loadServerAdmin().catch(e=>toast(e.message,'alert-circle'));
@@ -1151,13 +1284,13 @@
     const nav = event.target.closest('[data-page]'); if (nav) { navigate(nav.dataset.page); return; }
     if(event.target.closest('[data-server-refresh]')){loadServerAdmin().then(()=>toast('اطلاعات سرور تازه شد.','refresh-cw')).catch(e=>toast(e.message,'alert-circle'));return;}
     if(event.target.closest('[data-server-backup]')){const b=event.target.closest('[data-server-backup]');b.disabled=true;try{const result=await api('/api/server-admin/backups',{method:'POST'});toast(`پشتیبان ساخته شد: ${result.filename}`,'archive');await loadServerAdmin();}catch(e){toast(e.message,'alert-circle');}finally{b.disabled=false;}return;}
-    const revokeServerAdmin=event.target.closest('[data-server-admin-revoke]');if(revokeServerAdmin){if(!confirm('دسترسی مدیریت سرور این حساب لغو شود؟'))return;try{await api(`/api/server-admin/admins/${encodeURIComponent(revokeServerAdmin.dataset.serverAdminRevoke)}`,{method:'DELETE'});await loadServerAdmin();toast('دسترسی مدیر سرور لغو شد.');}catch(e){toast(e.message,'alert-circle');}return;}
+    const revokeServerAdmin=event.target.closest('[data-server-admin-revoke]');if(revokeServerAdmin){if(!await askConfirm({title:'لغو دسترسی سرور',message:'دسترسی مدیریت سرور این حساب لغو شود؟',confirmLabel:'لغو دسترسی'}))return;try{await api(`/api/server-admin/admins/${encodeURIComponent(revokeServerAdmin.dataset.serverAdminRevoke)}`,{method:'DELETE'});await loadServerAdmin();toast('دسترسی مدیر سرور لغو شد.');}catch(e){toast(e.message,'alert-circle');}return;}
     const jump=event.target.closest('[data-presence-jump]'); if(jump){const target=jump.dataset.presenceJump;if(PAGES[target]){navigate(target);toast('به صفحه هم‌تیمی منتقل شدید.','users');}return;}
     const channel=event.target.closest('[data-chat-channel]');if(channel){state.chatChannel='workspace';state.chatTeamId='';api('/api/presence',{method:'POST',body:{page:state.page,team_id:null}}).catch(()=>{});loadChat().catch(e=>toast(e.message,'alert-circle'));return;}
     const teamChannel=event.target.closest('[data-chat-team]');if(teamChannel){state.chatChannel='team';state.chatTeamId=teamChannel.dataset.chatTeam;api('/api/presence',{method:'POST',body:{page:state.page,team_id:state.chatTeamId}}).catch(()=>{});loadChat().catch(e=>toast(e.message,'alert-circle'));return;}
     const replyBtn=event.target.closest('[data-chat-reply]');if(replyBtn){const m=state.chatMessages.find(x=>x.id===replyBtn.dataset.chatReply);if(m){state.chatReplyTo=m;state.chatEditingId=null;const input=$('chatBody');if(input)input.focus();renderChatComposerDecorations();}return;}
     const editBtn=event.target.closest('[data-chat-edit]');if(editBtn){const m=state.chatMessages.find(x=>x.id===editBtn.dataset.chatEdit);if(m){state.chatEditingId=m.id;state.chatReplyTo=null;state.chatMentions=(m.mentions||[]).map(x=>typeof x==='string'?x:x.id).filter(Boolean);const input=$('chatBody');if(input){input.value=m.body||'';input.focus();}renderChatComposerDecorations();}return;}
-    const deleteBtn=event.target.closest('[data-chat-delete]');if(deleteBtn){if(!confirm('این پیام و پیوست‌های آن حذف شود؟'))return;try{await api(`/api/chat/${deleteBtn.dataset.chatDelete}`,{method:'DELETE'});await loadChat(true);toast('پیام حذف شد.');}catch(e){toast(e.message,'alert-circle');}return;}
+    const deleteBtn=event.target.closest('[data-chat-delete]');if(deleteBtn){if(!await askConfirm({title:'حذف پیام',message:'پیام و پیوست‌های آن حذف شوند؟ این کار قابل بازگشت نیست.',confirmLabel:'حذف پیام'}))return;try{await api(`/api/chat/${deleteBtn.dataset.chatDelete}`,{method:'DELETE'});await loadChat(true);toast('پیام حذف شد.');}catch(e){toast(e.message,'alert-circle');}return;}
     if(event.target.closest('[data-chat-clear-reply]')){state.chatReplyTo=null;renderChatComposerDecorations();return;}
     if(event.target.closest('[data-chat-cancel-edit]')){state.chatEditingId=null;state.chatMentions=[];const input=$('chatBody');if(input)input.value='';renderChatComposerDecorations();return;}
     if(event.target.closest('[data-chat-clear-attachment]')){if(state.chatAttachment?.previewUrl)URL.revokeObjectURL(state.chatAttachment.previewUrl);state.chatAttachment=null;renderChatComposerDecorations();return;}
@@ -1181,8 +1314,8 @@
     if(action==='new-task'){openTaskEditor();return;}
     if(action==='make-backup'){try{const b=await api('/api/backups',{method:'POST'});toast('نسخه پشتیبان ساخته شد.','archive');state.backups=await api('/api/backups');render();}catch(e){toast(e.message,'alert-circle');}return;}
     if(action==='setup-2fa'){try{const d=await api('/api/security/totp/setup',{method:'POST'});showModal('راه‌اندازی تأیید دومرحله‌ای',`<div class="form-stack"><p class="form-hint">این کلید را در برنامه احراز هویت اضافه کنید. کدهای بازیابی را در جای امن نگه دارید؛ بعد از بستن این پنجره دوباره نمایش داده نمی‌شوند.</p><label class="field"><span>کلید محرمانه</span><input readonly value="${esc(d.secret)}" dir="ltr" /></label><label class="field"><span>پیوند TOTP</span><textarea readonly rows="2" dir="ltr">${esc(d.otpauthUri)}</textarea></label><label class="field"><span>۱۰ کد بازیابی یک‌بارمصرف</span><textarea readonly rows="5" dir="ltr" spellcheck="false">${esc((d.recoveryCodes||[]).join('\n'))}</textarea></label><form id="totpEnableForm" class="form-stack"><label class="field"><span>کد ۶ رقمی برنامه</span><input name="code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required /></label><button class="primary-button">فعال‌سازی تأیید دومرحله‌ای</button></form></div>`,'امنیت حساب');}catch(e){toast(e.message,'alert-circle');}return;}
-    if(action==='disable-2fa'){const password=prompt('گذرواژه حساب را وارد کنید:');if(!password)return;const code=prompt('کد ۶ رقمی برنامه احراز هویت یا کد بازیابی یک‌بارمصرف:');if(!code)return;try{await api('/api/security/totp/disable',{method:'POST',body:{password,code}});state.security=await api('/api/security');render();toast('تأیید دومرحله‌ای غیرفعال شد.');}catch(e){toast(e.message,'alert-circle');}return;}
-    if(action==='new-board'){const title=prompt('نام برد تازه را وارد کنید:');if(title&&title.trim()){const b=await api('/api/boards',{method:'POST',body:{title:title.trim(),description:''}});state.activeBoardId=b.id;state.boardPassword='';await loadBoards();toast('برد تازه ساخته شد.');}return;}
+    if(action==='disable-2fa'){const password=await askInput({title:'غیرفعال‌کردن تأیید دومرحله‌ای',label:'گذرواژه حساب',type:'password',autocomplete:'current-password',maxLength:200,confirmLabel:'ادامه'});if(!password)return;const code=await askInput({title:'تأیید هویت',label:'کد تأیید یا کد بازیابی',maxLength:32,confirmLabel:'غیرفعال‌کردن'});if(!code)return;try{await api('/api/security/totp/disable',{method:'POST',body:{password,code}});state.security=await api('/api/security');render();toast('تأیید دومرحله‌ای غیرفعال شد.');}catch(e){toast(e.message,'alert-circle');}return;}
+    if(action==='new-board'){const title=await askInput({title:'برد ایده جدید',label:'نام برد',placeholder:'مثلاً برنامه‌ریزی فصل بهار',minLength:2,maxLength:100,confirmLabel:'ساخت برد'});if(title&&title.trim()){const b=await api('/api/boards',{method:'POST',body:{title:title.trim(),description:''}});state.activeBoardId=b.id;state.boardPassword='';await loadBoards();toast('برد تازه ساخته شد.');}return;}
     if(action==='new-board-item'){if(!state.activeBoardId){await loadBoards();}if(state.activeBoardId)openBoardItemEditor();return;}
     if(action==='new-folder'){openDriveNodeCreator('folder');return;}
     if(action==='new-note'){openMarkdownEditor(null,state.driveParentId);return;}
@@ -1190,7 +1323,7 @@
     if(action==='new-project'){openProjectEditor();return;}
     if(action==='new-team'){openTeamEditor();return;}
     if(action==='create-join-code'){try{const result=await api('/api/workspace-join-codes',{method:'POST',body:{role:'member',max_uses:1}});showModal('کد عضویت ۱۵ دقیقه‌ای',`<div class="join-code-card"><p>این کد فقط ۱۵ دقیقه اعتبار دارد و برای یک نفر قابل استفاده است.</p><strong dir="ltr">${esc(result.code)}</strong><button type="button" class="primary-button" data-copy-join-code="${esc(result.code)}"><i data-lucide="copy"></i> کپی کد</button><small>پس از کپی، آن را از یک مسیر امن برای همکار ارسال کنید.</small></div>`,'عضویت سریع');}catch(e){toast(e.message,'alert-circle');}return;}
-    if(action==='join-with-code'){const code=prompt('کد ۸ نویسه‌ای عضویت را وارد کنید:');if(!code)return;try{await api('/api/workspace-join-codes/accept',{method:'POST',body:{code:code.trim()}});stopPolling();await startWorkspace();toast('به فضای کاری پیوستید.','users');}catch(e){toast(e.message,'alert-circle');}return;}
+    if(action==='join-with-code'){const code=await askInput({title:'پیوستن به فضای کاری',label:'کد عضویت',message:'کد ۸ نویسه‌ای را از مدیر فضای کاری دریافت کنید.',placeholder:'کد عضویت',maxLength:16,confirmLabel:'پیوستن'});if(!code)return;try{await api('/api/workspace-join-codes/accept',{method:'POST',body:{code:code.trim()}});stopPolling();await startWorkspace();toast('به فضای کاری پیوستید.','users');}catch(e){toast(e.message,'alert-circle');}return;}
     if(action==='new-custom-role'){openCustomRoleEditor();return;}
     if(action==='remove-avatar'){try{await api('/api/me/avatar',{method:'DELETE'});await refreshWorkspace(true);toast('تصویر نمایه حذف شد.');navigate('settings');}catch(e){toast(e.message,'alert-circle');}return;}
     if(action==='invite'){openInviteEditor();return;}
@@ -1201,41 +1334,41 @@
     const filter = event.target.closest('[data-task-filter]'); if(filter){state.taskFilter=filter.dataset.taskFilter;render();return;}
     const cal = event.target.closest('[data-calendar]'); if(cal){const cur=gregorianToJalaliParts(state.month.getFullYear(),state.month.getMonth()+1,1);let jy=cur.jy,jm=cur.jm+(cal.dataset.calendar==='next'?1:-1);if(jm<1){jy--;jm=12;}if(jm>12){jy++;jm=1;}const first=jalaliToGregorianParts(jy,jm,1);state.month=new Date(first.gy,first.gm-1,1);render();return;}
     const editTask = event.target.closest('[data-edit-task]'); if(editTask){const t=state.tasks.find(x=>x.id===state.modalTaskId);closeModal();if(t)openTaskEditor(t);return;}
-    const deleteTask = event.target.closest('[data-delete-task]'); if(deleteTask){if(!confirm('این کار و فایل‌های پیوست آن حذف شود؟'))return;await api(`/api/tasks/${state.modalTaskId}`,{method:'DELETE'});closeModal();await refreshWorkspace(true);toast('کار حذف شد.');return;}
+    const deleteTask = event.target.closest('[data-delete-task]'); if(deleteTask){if(!await askConfirm({title:'حذف کار',message:'این کار و فایل‌های پیوست آن حذف شوند؟ این کار قابل بازگشت نیست.',confirmLabel:'حذف کار'}))return;await api(`/api/tasks/${state.modalTaskId}`,{method:'DELETE'});closeModal();await refreshWorkspace(true);toast('کار حذف شد.');return;}
     const addProject = event.target.closest('[data-edit-project]'); if(addProject){const p=state.projects.find(x=>x.id===addProject.dataset.editProject);if(p)openProjectEditor(p);return;}
-    const delProject = event.target.closest('[data-delete-project]'); if(delProject){if(!confirm('پروژه حذف شود؟ کارهای متصل باقی می‌مانند.'))return;await api(`/api/projects/${delProject.dataset.deleteProject}`,{method:'DELETE'});await refreshWorkspace(true);toast('پروژه حذف شد.');return;}
+    const delProject = event.target.closest('[data-delete-project]'); if(delProject){if(!await askConfirm({title:'حذف پروژه',message:'پروژه حذف می‌شود؛ کارهای متصل به آن باقی می‌مانند.',confirmLabel:'حذف پروژه'}))return;await api(`/api/projects/${delProject.dataset.deleteProject}`,{method:'DELETE'});await refreshWorkspace(true);toast('پروژه حذف شد.');return;}
     const projectTasks = event.target.closest('[data-project-tasks]');if(projectTasks){state.search='';$('globalSearch').value='';state.page='all-tasks';render();document.querySelectorAll('#taskRows tr[data-open-task]').forEach(row=>{const t=state.tasks.find(x=>x.id===row.dataset.openTask);row.hidden=t?.projectId!==projectTasks.dataset.projectTasks;});return;}
     const manageTeam = event.target.closest('[data-manage-team]');if(manageTeam){openManageTeam(manageTeam.dataset.manageTeam);return;}
     const changeRole=event.target.closest('[data-change-member-role]');if(changeRole){openMemberRoleEditor(changeRole.dataset.changeMemberRole);return;}
     const editRole=event.target.closest('[data-edit-custom-role]');if(editRole){openCustomRoleEditor(editRole.dataset.editCustomRole);return;}
-    const deleteRole=event.target.closest('[data-delete-custom-role]');if(deleteRole){if(!confirm('این نقش حذف شود؟ اعضای آن به نقش پایه برمی‌گردند.'))return;try{await api(`/api/custom-roles/${deleteRole.dataset.deleteCustomRole}`,{method:'DELETE'});await refreshWorkspace(true);toast('نقش حذف شد.');}catch(e){toast(e.message,'alert-circle');}return;}
-    const delTeam = event.target.closest('[data-delete-team]');if(delTeam){if(!confirm('تیم حذف شود؟ کارهای آن بدون تیم باقی می‌مانند.'))return;await api(`/api/teams/${delTeam.dataset.deleteTeam}`,{method:'DELETE'});await refreshWorkspace(true);toast('تیم حذف شد.');return;}
-    const revoke = event.target.closest('[data-revoke-invite]');if(revoke){if(!confirm('دعوت‌نامه لغو شود؟'))return;await api(`/api/invitations/${revoke.dataset.revokeInvite}`,{method:'DELETE'});await refreshWorkspace(true);toast('دعوت‌نامه لغو شد.');return;}
-    const revokeJoin = event.target.closest('[data-revoke-join-link]');if(revokeJoin){if(!confirm('لینک عضویت لغو شود؟ کسانی که هنوز وارد نشده‌اند دیگر نمی‌توانند از آن استفاده کنند.'))return;await api(`/api/workspace-join-links/${revokeJoin.dataset.revokeJoinLink}`,{method:'DELETE'});await refreshWorkspace(true);toast('لینک عضویت لغو شد.');return;}
+    const deleteRole=event.target.closest('[data-delete-custom-role]');if(deleteRole){if(!await askConfirm({title:'حذف نقش سفارشی',message:'این نقش حذف می‌شود و اعضای آن به نقش پایه برمی‌گردند.',confirmLabel:'حذف نقش'}))return;try{await api(`/api/custom-roles/${deleteRole.dataset.deleteCustomRole}`,{method:'DELETE'});await refreshWorkspace(true);toast('نقش حذف شد.');}catch(e){toast(e.message,'alert-circle');}return;}
+    const delTeam = event.target.closest('[data-delete-team]');if(delTeam){if(!await askConfirm({title:'حذف تیم',message:'تیم حذف می‌شود؛ کارهای آن بدون تیم باقی می‌مانند.',confirmLabel:'حذف تیم'}))return;await api(`/api/teams/${delTeam.dataset.deleteTeam}`,{method:'DELETE'});await refreshWorkspace(true);toast('تیم حذف شد.');return;}
+    const revoke = event.target.closest('[data-revoke-invite]');if(revoke){if(!await askConfirm({title:'لغو دعوت‌نامه',message:'این دعوت‌نامه لغو شود؟',confirmLabel:'لغو دعوت‌نامه'}))return;await api(`/api/invitations/${revoke.dataset.revokeInvite}`,{method:'DELETE'});await refreshWorkspace(true);toast('دعوت‌نامه لغو شد.');return;}
+    const revokeJoin = event.target.closest('[data-revoke-join-link]');if(revokeJoin){if(!await askConfirm({title:'لغو لینک عضویت',message:'این لینک دیگر قابل استفاده نخواهد بود؛ افرادی که هنوز عضو نشده‌اند نمی‌توانند از آن استفاده کنند.',confirmLabel:'لغو لینک'}))return;await api(`/api/workspace-join-links/${revokeJoin.dataset.revokeJoinLink}`,{method:'DELETE'});await refreshWorkspace(true);toast('لینک عضویت لغو شد.');return;}
     const createJoin = event.target.closest('[data-create-join-link]');if(createJoin){try{const result=await api('/api/workspace-join-links',{method:'POST',body:{role:$('inviteRoleInput').value,expires_days:7,max_uses:0}});showModal('لینک امن عضویت آماده است',`<p class="form-hint">این لینک یک توکن تصادفی ۴۸ بایتی دارد؛ فقط هش آن در سرور ذخیره می‌شود. توکن در بخش fragment لینک قرار می‌گیرد و در درخواست اولیه صفحه یا مسیرهای ثبت لاگ ارسال نمی‌شود؛ هنگام عضویت از بدنه درخواست POST فرستاده می‌شود. حساب‌های موجود با ورود به حساب فعلی می‌پیوندند و حساب‌های جدید می‌توانند ثبت‌نام کنند. اعتبار: ۷ روز، تعداد استفاده: نامحدود. برای رمزنگاری مسیر شبکه، HTTPS را فعال کنید.</p><div class="invite-link-box"><input id="inviteUrlResult" readonly dir="ltr" value="${esc(result.joinUrl)}" /><button type="button" class="primary-button" data-copy-invite><i data-lucide="copy"></i> کپی لینک</button></div><div class="modal-footer"><button class="secondary-button" data-close-modal>بستن</button></div>`,'عضویت در فضای کار');await refreshWorkspace(true);}catch(err){toast(err.message,'alert-circle');}return;}
     const copy = event.target.closest('[data-copy]');if(copy){await copyText(copy.dataset.copy);toast('نشانی کپی شد.','copy');return;}
     const notification = event.target.closest('[data-notification]');if(notification){const id=notification.dataset.notification,entity=notification.dataset.entity;await api(`/api/notifications/${id}/read`,{method:'PATCH'});await refreshWorkspace(true);closeModal();if(entity)openTaskDetail(entity);return;}
     const startTimer = event.target.closest('[data-start-timer]'); if(startTimer){await api(`/api/tasks/${startTimer.dataset.startTimer}/time/start`,{method:'POST'});await refreshWorkspace(true);await openTaskDetail(startTimer.dataset.startTimer);toast('زمان‌سنج شروع شد.','timer');return;}
     const stopTimer = event.target.closest('[data-stop-timer]'); if(stopTimer){await api('/api/time/stop',{method:'POST',body:{entry_id:stopTimer.dataset.stopTimer}});await refreshWorkspace(true);await openTaskDetail(state.modalTaskId);toast('زمان ثبت شد.','timer');return;}
     const requestApproval = event.target.closest('[data-request-approval]'); if(requestApproval){await api(`/api/tasks/${requestApproval.dataset.requestApproval}/approvals`,{method:'POST'});await refreshWorkspace(true);await openTaskDetail(requestApproval.dataset.requestApproval);toast('درخواست تأیید ارسال شد.','send');return;}
-    const approvalAction=event.target.closest('[data-approval]'); if(approvalAction){const ok=approvalAction.dataset.approval==='approved';const note=prompt(ok?'یادداشت تأیید (اختیاری)':'دلیل نیاز به اصلاح (اختیاری)')||'';await api(`/api/approvals/${approvalAction.dataset.approvalId}`,{method:'PATCH',body:{status:approvalAction.dataset.approval,comment:note}});await refreshWorkspace(true);if(state.modalTaskId)await openTaskDetail(state.modalTaskId);toast(ok?'کار تأیید شد.':'کار برای اصلاح بازگشت.');return;}
+    const approvalAction=event.target.closest('[data-approval]'); if(approvalAction){const ok=approvalAction.dataset.approval==='approved';const note=await askInput({title:ok?'ثبت یادداشت تأیید':'درخواست اصلاح',label:ok?'یادداشت تأیید':'دلیل نیاز به اصلاح',message:'نوشتن توضیح اختیاری است.',required:false,maxLength:1200,confirmLabel:ok?'تأیید کار':'ارسال برای اصلاح'})||'';await api(`/api/approvals/${approvalAction.dataset.approvalId}`,{method:'PATCH',body:{status:approvalAction.dataset.approval,comment:note}});await refreshWorkspace(true);if(state.modalTaskId)await openTaskDetail(state.modalTaskId);toast(ok?'کار تأیید شد.':'کار برای اصلاح بازگشت.');return;}
     const toggleRecurring=event.target.closest('[data-toggle-recurring]'); if(toggleRecurring){await api(`/api/recurring/${toggleRecurring.dataset.toggleRecurring}/toggle`,{method:'PATCH'});state.recurringRules=await api('/api/recurring');render();toast('وضعیت قانون تکرار تغییر کرد.');return;}
-    const deleteRecurring=event.target.closest('[data-delete-recurring]'); if(deleteRecurring){if(!confirm('این قانون تکرار حذف شود؟ کارهای قبلی باقی می‌مانند.'))return;await api(`/api/recurring/${deleteRecurring.dataset.deleteRecurring}`,{method:'DELETE'});state.recurringRules=await api('/api/recurring');render();toast('قانون حذف شد.');return;}
+    const deleteRecurring=event.target.closest('[data-delete-recurring]'); if(deleteRecurring){if(!await askConfirm({title:'حذف قانون تکرار',message:'قانون تکرار حذف می‌شود؛ کارهایی که قبلاً ساخته شده‌اند باقی می‌مانند.',confirmLabel:'حذف قانون'}))return;await api(`/api/recurring/${deleteRecurring.dataset.deleteRecurring}`,{method:'DELETE'});state.recurringRules=await api('/api/recurring');render();toast('قانون حذف شد.');return;}
     const useTemplate=event.target.closest('[data-use-template]'); if(useTemplate){const task=await api(`/api/templates/${useTemplate.dataset.useTemplate}/create-task`,{method:'POST'});await refreshWorkspace(true);toast('کار از قالب ساخته شد.');openTaskDetail(task.id);return;}
-    const deleteTemplate=event.target.closest('[data-delete-template]'); if(deleteTemplate){if(!confirm('قالب حذف شود؟ کارهای ساخته‌شده باقی می‌مانند.'))return;await api(`/api/templates/${deleteTemplate.dataset.deleteTemplate}`,{method:'DELETE'});state.templates=await api('/api/templates');render();toast('قالب حذف شد.');return;}
+    const deleteTemplate=event.target.closest('[data-delete-template]'); if(deleteTemplate){if(!await askConfirm({title:'حذف قالب',message:'قالب حذف می‌شود؛ کارهایی که با آن ساخته شده‌اند باقی می‌مانند.',confirmLabel:'حذف قالب'}))return;await api(`/api/templates/${deleteTemplate.dataset.deleteTemplate}`,{method:'DELETE'});state.templates=await api('/api/templates');render();toast('قالب حذف شد.');return;}
     const reportPeriod=event.target.closest('[data-report-period]'); if(reportPeriod){state.reportPeriod=reportPeriod.dataset.reportPeriod;state.reportData=null;render();await loadReports();return;}
     const deleteChecklist = event.target.closest('[data-delete-checklist]');if(deleteChecklist){await api(`/api/tasks/${state.modalTaskId}/checklist/${deleteChecklist.dataset.deleteChecklist}`,{method:'DELETE'});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
-    const deleteAttachment = event.target.closest('[data-delete-attachment]');if(deleteAttachment){if(!confirm('این پیوست حذف شود؟'))return;await api(`/api/attachments/${deleteAttachment.dataset.deleteAttachment}`,{method:'DELETE'});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
+    const deleteAttachment = event.target.closest('[data-delete-attachment]');if(deleteAttachment){if(!await askConfirm({title:'حذف پیوست',message:'این پیوست از کار حذف شود؟',confirmLabel:'حذف پیوست'}))return;await api(`/api/attachments/${deleteAttachment.dataset.deleteAttachment}`,{method:'DELETE'});await openTaskDetail(state.modalTaskId);await refreshWorkspace(true);return;}
     if(event.target.closest('.board-link'))return;
     const editBoardItem=event.target.closest('[data-edit-board-item]');if(editBoardItem){const item=state.boardItems.find(x=>x.id===editBoardItem.dataset.editBoardItem);if(item)openBoardItemEditor(item);return;}
     const openNode=event.target.closest('[data-open-drive-node]');if(openNode){await openDriveNode(openNode.dataset.openDriveNode);return;}
     const crumb=event.target.closest('[data-drive-crumb]');if(crumb){const index=Number(crumb.dataset.driveCrumb);const target=state.driveTrail[index];state.driveTrail=state.driveTrail.slice(0,index);await loadDrive(target?.id||null,state.drivePassword);return;}
     if(event.target.closest('[data-drive-root]')){await loadDrive(null);return;}
-    const shareNode=event.target.closest('[data-share-node]');if(shareNode){const node=state.driveItems.find(x=>x.id===shareNode.dataset.shareNode);if(node){if(node.locked){const pass=prompt('برای تغییر تنظیمات، گذرواژه اشتراک را وارد کنید:')||'';if(!pass)return;state.drivePassword=pass;}openShareSettings(node);}return;}
+    const shareNode=event.target.closest('[data-share-node]');if(shareNode){const node=state.driveItems.find(x=>x.id===shareNode.dataset.shareNode);if(node){if(node.locked){const pass=await askInput({title:'تنظیمات اشتراک محافظت‌شده',label:'گذرواژه اشتراک',type:'password',autocomplete:'current-password',maxLength:200,confirmLabel:'ادامه'})||'';if(!pass)return;state.drivePassword=pass;}openShareSettings(node);}return;}
     const copyNode=event.target.closest('[data-copy-node]');if(copyNode){const link=`${location.origin}/?openNode=${encodeURIComponent(copyNode.dataset.copyNode)}`;await copyText(link);toast('پیوند داخلی کپی شد.','copy');return;}
-    const downloadNode=event.target.closest('[data-download-node]');if(downloadNode){const n=state.driveItems.find(x=>x.id===downloadNode.dataset.downloadNode);let pass=state.drivePassword||'';if(n?.locked){pass=prompt('گذرواژه فایل را وارد کنید:')||'';if(!pass)return;}window.location.href=`/api/drive/nodes/${downloadNode.dataset.downloadNode}/download${pass?'?password='+encodeURIComponent(pass):''}`;return;}
-    const deleteNode=event.target.closest('[data-delete-node]');if(deleteNode){if(!confirm('این مورد و در صورت پوشه‌بودن تمام محتویات آن حذف شود؟'))return;const node=state.driveItems.find(x=>x.id===deleteNode.dataset.deleteNode);if(node?.locked){const pass=prompt('برای حذف، گذرواژه اشتراک را وارد کنید:')||'';if(!pass)return;state.drivePassword=pass;}await api(`/api/drive/nodes/${deleteNode.dataset.deleteNode}${state.drivePassword?'?password='+encodeURIComponent(state.drivePassword):''}`,{method:'DELETE'});await loadDrive();toast('مورد حذف شد.');return;}
-    const deleteBoardItem=event.target.closest('[data-delete-board-item]');if(deleteBoardItem){if(!confirm('این کارت از برد حذف شود؟'))return;await api(`/api/boards/${state.activeBoardId}/items/${deleteBoardItem.dataset.deleteBoardItem}`,{method:'DELETE'});closeModal();await loadBoardItems();return;}
+    const downloadNode=event.target.closest('[data-download-node]');if(downloadNode){const n=state.driveItems.find(x=>x.id===downloadNode.dataset.downloadNode);let pass=state.drivePassword||'';if(n?.locked){pass=await askInput({title:'دانلود فایل محافظت‌شده',label:'گذرواژه فایل',type:'password',autocomplete:'current-password',maxLength:200,confirmLabel:'دانلود'})||'';if(!pass)return;}window.location.href=`/api/drive/nodes/${downloadNode.dataset.downloadNode}/download${pass?'?password='+encodeURIComponent(pass):''}`;return;}
+    const deleteNode=event.target.closest('[data-delete-node]');if(deleteNode){if(!await askConfirm({title:'حذف از فضای مشترک',message:'این مورد حذف شود؟ اگر پوشه باشد، تمام محتویات آن نیز حذف می‌شوند.',confirmLabel:'حذف مورد'}))return;const node=state.driveItems.find(x=>x.id===deleteNode.dataset.deleteNode);if(node?.locked){const pass=await askInput({title:'حذف مورد محافظت‌شده',label:'گذرواژه اشتراک',type:'password',autocomplete:'current-password',maxLength:200,confirmLabel:'ادامه'})||'';if(!pass)return;state.drivePassword=pass;}await api(`/api/drive/nodes/${deleteNode.dataset.deleteNode}${state.drivePassword?'?password='+encodeURIComponent(state.drivePassword):''}`,{method:'DELETE'});await loadDrive();toast('مورد حذف شد.');return;}
+    const deleteBoardItem=event.target.closest('[data-delete-board-item]');if(deleteBoardItem){if(!await askConfirm({title:'حذف کارت برد',message:'این کارت از برد حذف شود؟',confirmLabel:'حذف کارت'}))return;await api(`/api/boards/${state.activeBoardId}/items/${deleteBoardItem.dataset.deleteBoardItem}`,{method:'DELETE'});closeModal();await loadBoardItems();return;}
 
   });
 
@@ -1392,16 +1525,51 @@
   });
 
   document.querySelectorAll('[data-auth-tab]').forEach(b=>b.addEventListener('click',()=>setAuthTab(b.dataset.authTab)));
+  document.querySelector('.auth-tabs')?.addEventListener('keydown', event => {
+    const current = event.target.closest('[data-auth-tab]');
+    if (!current) return;
+    const tabs = [...document.querySelectorAll('[data-auth-tab]')];
+    const index = tabs.indexOf(current);
+    let next = index;
+    if (event.key === 'ArrowLeft') next = (index + 1) % tabs.length;
+    else if (event.key === 'ArrowRight') next = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    setAuthTab(tabs[next].dataset.authTab);
+    tabs[next].focus();
+  });
   document.querySelectorAll('[data-switch-auth]').forEach(b=>b.addEventListener('click',()=>setAuthTab(b.dataset.switchAuth)));
-  $('registerForm').addEventListener('input',()=>{});
   $('logoutButton').addEventListener('click',async()=>{await api('/api/auth/logout',{method:'POST'}).catch(()=>{});showAuth();});
   $('workspaceSelect')?.addEventListener('change',e=>switchWorkspaceOrCreate(e.target.value));
-  document.querySelector('[data-forgot-password]')?.addEventListener('click',async()=>{const email=$('loginEmail').value.trim()||prompt('ایمیل حساب را وارد کنید:');if(!email)return;try{const result=await api('/api/auth/password-reset/request',{method:'POST',body:{email}});showAuthError(result.message);}catch(e){showAuthError(e.message);}});
+  document.querySelector('[data-forgot-password]')?.addEventListener('click',async()=>{const email=$('loginEmail').value.trim()||await askInput({title:'بازیابی گذرواژه',label:'ایمیل حساب',type:'email',placeholder:'name@company.com',maxLength:254,confirmLabel:'ارسال راهنما'});if(!email)return;try{const result=await api('/api/auth/password-reset/request',{method:'POST',body:{email}});showAuthError(result.message);}catch(e){showAuthError(e.message);}});
   $('globalCreate').addEventListener('click',()=>openTaskEditor());
   $('notificationButton').addEventListener('click',()=>openNotifications().catch(e=>toast(e.message,'alert-circle')));
   $('helpButton').addEventListener('click',openTour);
   $('focusButton').addEventListener('click',()=>navigate('my-tasks'));
-  $('mobileMenu').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
+  function syncMobileNavState(open = false) {
+    const mobile = window.matchMedia('(max-width: 940px)').matches;
+    const sidebar = $('sidebar');
+    sidebar?.classList.toggle('open', Boolean(open && mobile));
+    if (sidebar) {
+      sidebar.inert = mobile && !open;
+      sidebar.setAttribute('aria-hidden', String(mobile && !open));
+    }
+    $('mobileMenu')?.setAttribute('aria-expanded',String(Boolean(open && mobile)));
+    $('mobileNavBackdrop')?.classList.toggle('open',Boolean(open && mobile));
+    $('mobileNavBackdrop')?.setAttribute('aria-hidden',String(!(open && mobile)));
+  }
+  function closeMobileNav() { syncMobileNavState(false); }
+  syncMobileNavState(false);
+  $('mobileMenu').addEventListener('click',()=>{
+    const open = !$('sidebar').classList.contains('open');
+    syncMobileNavState(open);
+    if(open) $('sidebar').querySelector('.nav-item.active')?.focus({preventScroll:true});
+  });
+  $('mobileNavBackdrop')?.addEventListener('click',()=>{closeMobileNav();$('mobileMenu')?.focus();});
+  document.querySelector('.sidebar .brand')?.addEventListener('click',()=>{if(window.matchMedia('(max-width: 940px)').matches)closeMobileNav();});
+  window.addEventListener('resize',()=>syncMobileNavState($('sidebar')?.classList.contains('open')),{passive:true});
   $('globalSearch').addEventListener('input',e=>{state.search=e.target.value.trim();if(!['my-tasks','all-tasks','board'].includes(state.page))state.page='all-tasks';render();});
   $('globalSearch').addEventListener('keydown',e=>{if(e.key==='Escape'){e.target.value='';state.search='';render();e.target.blur();}});
   $('modalBackdrop').addEventListener('click',e=>{if(e.target===$('modalBackdrop'))closeModal();});
@@ -1409,18 +1577,41 @@
   $('tourNext').addEventListener('click',()=>{if(state.tourStep<TOUR.length-1){state.tourStep++;drawTour();}else finishTour();});
   $('tourPrev').addEventListener('click',()=>{if(state.tourStep>0){state.tourStep--;drawTour();}});
   $('tourSkip').addEventListener('click',finishTour); $('tourClose').addEventListener('click',finishTour);
-  $('copyInviteLink')?.addEventListener('click',()=>{});
-  $('modalBody').addEventListener('click',async e=>{const b=e.target.closest('[data-copy-invite]');if(b){try{await copyText($('inviteUrlResult').value);toast('لینک دعوت کپی شد.','copy');}catch(err){toast(err.message,'alert-circle');}}const c=e.target.closest('[data-copy-join-code]');if(c){try{await copyText(c.dataset.copyJoinCode);toast('کد عضویت کپی شد.','copy');}catch(err){toast(err.message,'alert-circle');}}});
+  $('modalBody').addEventListener('click',async e=>{if(e.target.closest('[data-dialog-cancel]')){closeModalNow();return;}const b=e.target.closest('[data-copy-invite]');if(b){try{await copyText($('inviteUrlResult').value);toast('لینک دعوت کپی شد.','copy');}catch(err){toast(err.message,'alert-circle');}}const c=e.target.closest('[data-copy-join-code]');if(c){try{await copyText(c.dataset.copyJoinCode);toast('کد عضویت کپی شد.','copy');}catch(err){toast(err.message,'alert-circle');}}});
+  function trapDialogFocus(event, panel) {
+    const items = [...panel.querySelectorAll(MODAL_FOCUSABLE)].filter(el => el.getClientRects().length);
+    if (!items.length) { event.preventDefault(); panel.focus(); return; }
+    const first = items[0], last = items[items.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+  }
   document.addEventListener('keydown',e=>{
+    const modalOpen = $('modalBackdrop').classList.contains('open');
+    const creditOpen = $('creditBackdrop').classList.contains('open');
+    const tourOpen = !$('tourBackdrop').classList.contains('hidden');
+    const activePanel = modalOpen ? $('modalPanel') : creditOpen ? $('creditModal') : tourOpen ? $('tourCard') : null;
+    if (activePanel) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (modalOpen) closeModal(); else if (creditOpen) closeCredit(); else finishTour();
+        return;
+      }
+      if (e.key === 'Tab') { trapDialogFocus(e, activePanel); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') return;
+      if (e.key.toLowerCase() === 'n') return;
+    }
+    if($('sidebar')?.classList.contains('open')) {
+      if(e.key==='Escape') { e.preventDefault(); closeMobileNav(); $('mobileMenu')?.focus(); return; }
+      if(e.key==='Tab') { trapDialogFocus(e,$('sidebar')); return; }
+    }
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('globalSearch').focus();}
     if(e.key.toLowerCase()==='n'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!e.ctrlKey&&!e.metaKey){e.preventDefault();openTaskEditor();}
-    if(e.key==='Escape'){closeModal();closeCredit();}
   });
   let draggedTaskId=null;
   document.addEventListener('pointermove',sendCursorPosition,{passive:true});
   document.addEventListener('change',async e=>{if(e.target?.id!=='avatarUploadInput'||!e.target.files?.[0])return;const file=e.target.files[0];if(file.size>3*1024*1024){toast('تصویر باید کمتر از ۳ مگابایت باشد.','alert-circle');e.target.value='';return;}try{const result=await uploadAvatarFile(file);state.me.avatarUrl=result.avatarUrl;await refreshWorkspace(true);toast('تصویر نمایه به‌روزرسانی شد.','user-round');}catch(err){toast(err.message,'alert-circle');}finally{e.target.value='';}});
   function uploadAvatarFile(file){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST','/api/me/avatar');xhr.withCredentials=true;xhr.setRequestHeader('Content-Type',file.type);xhr.setRequestHeader('X-Filename',encodeURIComponent(file.name));xhr.upload.onprogress=e=>{const label=document.querySelector('.profile-photo-setting small');if(label&&e.lengthComputable)label.textContent=`بارگذاری تصویر: ${Math.round(e.loaded/e.total*100)}٪`;};xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText);}catch(_){}if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(new Error(data.detail||'بارگذاری تصویر ناموفق بود.'));};xhr.onerror=()=>reject(new Error('ارتباط با سرور برقرار نشد.'));xhr.send(file);});}
-  $('onlineMembersButton')?.addEventListener('click',()=>{const rows=(state.remotePresence||[]).map(p=>`<button class="online-person online-person-modal" data-presence-jump="${esc(p.page)}">${avatar(p,'avatar-xs')}<span><strong>${esc(p.name)}</strong><small>${esc(PAGES[p.page]||'فضای کار')} · ${esc(p.roleName||'عضو')}</small></span><i class="online-dot" style="--person-color:${esc(p.cursor_color||'#47765e')}"></i></button>`).join('');showModal('اعضای آنلاین',rows||empty('users','فعلاً کسی آنلاین نیست','به‌محض ورود اعضا، نام و صفحه فعالشان اینجا نمایش داده می‌شود.'),'حضور تیم');});
+  $('onlineMembersButton')?.addEventListener('click',()=>{const rows=(state.remotePresence||[]).map(p=>`<button class="online-person online-person-modal" data-presence-jump="${esc(p.page)}">${avatar(p,'avatar-xs')}<span><strong>${esc(p.name)}</strong><small>${esc(PAGES[p.page]||'فضای کار')} · ${esc(p.roleName||'عضو')}</small></span><i class="online-dot" style="--person-color:${esc(p.cursor_color||'var(--presence-fallback-color)')}"></i></button>`).join('');showModal('اعضای آنلاین',rows||empty('users','فعلاً کسی آنلاین نیست','به‌محض ورود اعضا، نام و صفحه فعالشان اینجا نمایش داده می‌شود.'),'حضور تیم');});
   $('pageContent').addEventListener('keydown',e=>{
     if(e.target.closest('#chatComposeForm textarea')&&(e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();$('chatComposeForm')?.requestSubmit();}
     if(e.target.id==='mdSource'&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();const f=$('sharedNoteForm');if(f)f.requestSubmit();}
@@ -1442,8 +1633,7 @@
   const resetToken = new URLSearchParams(location.search).get('reset');
   if(resetToken){
     history.replaceState({},'',location.pathname);showAuth();
-    const newPassword=prompt('گذرواژه تازه را وارد کنید (حداقل ۸ نویسه):');
-    if(newPassword){api('/api/auth/password-reset/complete',{method:'POST',body:{token:resetToken,password:newPassword}}).then(()=>showAuthError('گذرواژه تغییر کرد. اکنون وارد شوید.')).catch(e=>showAuthError(e.message));}
+    askInput({title:'تنظیم گذرواژه تازه',label:'گذرواژه جدید',type:'password',message:'برای امنیت حساب، حداقل ۸ نویسه وارد کنید.',minLength:8,maxLength:200,autocomplete:'new-password',confirmLabel:'ذخیره گذرواژه'}).then(newPassword=>{if(newPassword)return api('/api/auth/password-reset/complete',{method:'POST',body:{token:resetToken,password:newPassword}}).then(()=>showAuthError('گذرواژه تغییر کرد. اکنون وارد شوید.')).catch(e=>showAuthError(e.message));});
   }else{
     // Restore an existing session, otherwise leave the registration screen ready.
     startWorkspace().catch(()=>showAuth());
