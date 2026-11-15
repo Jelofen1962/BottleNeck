@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/readme-hero.svg" alt="BottleNeck, a self-hosted workspace for team collaboration" width="100%" />
+  <img src="https://github.com/user-attachments/assets/c71d944d-14fa-4459-9f77-190d090b4a59" alt="BottleNeck, a self-hosted workspace for team collaboration" width="100%" />
 </div>
 
 <div align="center">
