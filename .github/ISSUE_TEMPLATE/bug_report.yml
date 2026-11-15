@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible problem in BottleNeck.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: "Please remove private workspace data, email addresses, tokens and personal information before submitting. For security vulnerabilities, follow SECURITY.md instead."
+  - type: input
+    id: version
+    attributes:
+      label: BottleNeck version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options:
+        - Windows 10/11
+        - Linux
+        - macOS
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact steps and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact all identifiers, secrets and private content.
+      render: text
+    validations:
+      required: false

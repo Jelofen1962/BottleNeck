@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="650" viewBox="0 0 1600 650" role="img" aria-labelledby="title desc">
+  <title id="title">BottleNeck team workspace</title>
+  <desc id="desc">A dark editorial illustration of a self-hosted team workspace with tasks, a collaborative board, Markdown notes and team chat.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#343833" stroke-width="1" opacity=".35"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity=".32"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="650" rx="28" fill="#171916"/>
+  <rect width="1600" height="650" rx="28" fill="url(#grid)"/>
+  <path d="M0 0H1600V10H0Z" fill="#C65C42"/>
+  <g transform="translate(86 84)">
+    <rect width="58" height="58" rx="16" fill="#C65C42"/>
+    <path d="M29 11V21M22 21H36L41 43Q42 49 36 49H22Q16 49 17 43L22 21Z" fill="none" stroke="#FFF9F2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="80" y="42" fill="#F6F2EA" font-family="Roboto,Arial,sans-serif" font-size="44" font-weight="700" letter-spacing="-.8">BottleNeck</text>
+    <text x="2" y="126" fill="#D6D2C8" font-family="Roboto,Arial,sans-serif" font-size="24" font-weight="500">A self-hosted workspace for teams that build together.</text>
+    <text x="2" y="171" fill="#A9ACA3" font-family="Vazirmatn,Arial,sans-serif" font-size="19">کارها، یادداشت‌ها و گفت‌وگوها در یک فضای مشترک</text>
+    <rect x="2" y="222" width="128" height="4" rx="2" fill="#C65C42"/>
+    <text x="2" y="274" fill="#F6F2EA" font-family="Roboto,Arial,sans-serif" font-size="18">Tasks · Projects · Notes · Boards · Chat · Files</text>
+    <text x="2" y="312" fill="#A9ACA3" font-family="Roboto,Arial,sans-serif" font-size="16">Persian-first  /  RTL  /  Self-hosted  /  LAN-ready</text>
+    <g transform="translate(0 390)">
+      <rect width="172" height="48" rx="8" fill="#F3EFE6"/>
+      <text x="86" y="30" fill="#20231F" font-family="Roboto,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="middle">Open source workspace</text>
+    </g>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="700" y="74" width="820" height="500" rx="20" fill="#222620" stroke="#4B5048" stroke-width="2"/>
+    <rect x="700" y="74" width="820" height="54" rx="20" fill="#2A2F28"/>
+    <path d="M700 108H1520" stroke="#454A42"/>
+    <circle cx="732" cy="101" r="6" fill="#C65C42"/><circle cx="753" cy="101" r="6" fill="#777E70"/><circle cx="774" cy="101" r="6" fill="#777E70"/>
+    <text x="1480" y="108" text-anchor="end" fill="#EAE6DC" font-family="Vazirmatn,Arial,sans-serif" font-size="14">فضای کاری تیم</text>
+    <rect x="716" y="144" width="162" height="410" rx="12" fill="#1B1F1A"/>
+    <text x="850" y="180" text-anchor="end" fill="#E9E5DB" font-family="Vazirmatn,Arial,sans-serif" font-size="15" font-weight="600">BottleNeck</text>
+    <g font-family="Vazirmatn,Arial,sans-serif" font-size="13" fill="#ADB2A7" text-anchor="end">
+      <text x="850" y="224">نمای کلی</text><text x="850" y="267">کارهای من</text><text x="850" y="310">پروژه‌ها</text><text x="850" y="353">یادداشت‌ها</text><text x="850" y="396">برد ایده‌ها</text><text x="850" y="439">گفت‌وگو</text><text x="850" y="482">فایل‌ها</text>
+    </g>
+    <g fill="none" stroke="#858C7F" stroke-width="1.7" stroke-linecap="round">
+      <path d="M736 213h12m-12 0 5-5m-5 5 5 5M736 256h12m-12-6v12M736 299h12v12h-12zM736 342h12m-12 0 6-6m-6 6 6 6M736 385h12v12h-12zM736 428h12m-12 0 6-6m-6 6 6 6M736 471h12v12h-12z"/>
+    </g>
+    <rect x="900" y="144" width="602" height="70" rx="12" fill="#2C322B"/>
+    <text x="1472" y="173" text-anchor="end" fill="#F0ECE2" font-family="Vazirmatn,Arial,sans-serif" font-size="18" font-weight="600">نمای کلی کار تیم</text>
+    <text x="1472" y="195" text-anchor="end" fill="#AEB3A8" font-family="Vazirmatn,Arial,sans-serif" font-size="12">فضای کاری مشترک، روی سرور خودتان</text>
+    <rect x="900" y="230" width="288" height="300" rx="12" fill="#20251F" stroke="#41483F"/>
+    <text x="1160" y="260" text-anchor="end" fill="#ECE8DD" font-family="Vazirmatn,Arial,sans-serif" font-size="15" font-weight="600">کارهای جاری</text>
+    <g font-family="Vazirmatn,Arial,sans-serif" font-size="12" fill="#D8D7CC">
+      <rect x="918" y="279" width="252" height="52" rx="8" fill="#2A3029"/><circle cx="1148" cy="305" r="5" fill="#C65C42"/><text x="1132" y="309" text-anchor="end">بازبینی محتوای سایت</text>
+      <rect x="918" y="341" width="252" height="52" rx="8" fill="#2A3029"/><circle cx="1148" cy="367" r="5" fill="#6B9A83"/><text x="1132" y="371" text-anchor="end">آماده‌سازی گزارش تیم</text>
+      <rect x="918" y="403" width="252" height="52" rx="8" fill="#2A3029"/><circle cx="1148" cy="429" r="5" fill="#C79D5A"/><text x="1132" y="433" text-anchor="end">بررسی فایل‌های پروژه</text>
+    </g>
+    <rect x="1204" y="230" width="298" height="142" rx="12" fill="#20251F" stroke="#41483F"/>
+    <text x="1474" y="259" text-anchor="end" fill="#ECE8DD" font-family="Vazirmatn,Arial,sans-serif" font-size="15" font-weight="600">یادداشت مشترک</text>
+    <rect x="1222" y="278" width="262" height="76" rx="8" fill="#2B3029"/>
+    <path d="M1240 297H1464M1240 314H1421M1240 331H1444" stroke="#A7ADA0" stroke-width="4" stroke-linecap="round" opacity=".65"/>
+    <rect x="1204" y="388" width="298" height="142" rx="12" fill="#20251F" stroke="#41483F"/>
+    <text x="1474" y="418" text-anchor="end" fill="#ECE8DD" font-family="Vazirmatn,Arial,sans-serif" font-size="15" font-weight="600">برد ایده‌ها</text>
+    <rect x="1222" y="438" width="72" height="68" rx="7" fill="#C65C42"/><rect x="1307" y="438" width="72" height="68" rx="7" fill="#D3C4A0"/><rect x="1392" y="438" width="92" height="68" rx="7" fill="#708C80"/>
+    <path d="M1236 456H1280M1236 469H1270M1320 456H1366M1320 469H1358M1406 456H1468M1406 469H1454" stroke="#20231F" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+  </g>
+  <text x="1510" y="620" text-anchor="end" fill="#777E72" font-family="Roboto,Arial,sans-serif" font-size="12">Illustrative project artwork · BottleNeck v1.0.0</text>
+</svg>

@@ -1,0 +1,52 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install development dependencies
+        run: uv sync --group dev --python 3.12
+
+      - name: Run checks
+        run: |
+          python -m py_compile main.py bottleneck_cli.py
+          node --check static/app.js
+          uv run --python 3.12 pytest -q
+
+      - name: Build and verify release archive
+        run: |
+          python scripts/build_release.py
+          python scripts/verify_release.py dist/BottleNeck-v1.0.0-production.zip
+
+      - name: Attach release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.sha256

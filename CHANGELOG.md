@@ -1,4 +1,22 @@
-# BottleNeck changelog
+# Changelog
+
+## v1.0.0 · Stable self-hosted release
+
+- Ended the experimental release track and established v1.0.0 as the stable release for trusted self-hosted network deployments.
+- Added persistent IP/subject-based throttling to registration, login, two-factor verification and password-reset endpoints. Rate-limit bucket identifiers are hashed before storage.
+- Added Origin and Fetch Metadata checks for state-changing API requests to reduce cross-site request risks.
+- Added a Content Security Policy, same-origin resource policy, explicit permissions policy and no-store behavior for API responses and the application shell.
+- Replaced the unbounded server log handler with rotating logs (5 MB per file, five retained rotations).
+- Added environment-controlled API documentation; production launchers disable the unauthenticated docs page by default.
+- Added explicit trusted-proxy configuration for HTTPS reverse-proxy deployments.
+- Migrated FastAPI startup/shutdown handlers to the application lifespan interface.
+- Added automated API smoke tests, GitHub Actions CI, dependency update configuration, issue templates and pull-request guidance.
+- Added MIT licensing, contribution rules, a code of conduct, a security policy, deployment and architecture guides, and a release checklist.
+- Added a README hero illustration with a documented path for replacing it with a real product screenshot.
+
+The release remains designed for one Uvicorn process and one local SQLite database. No independent penetration test has been performed; see `SECURITY.md` and `docs/DEPLOYMENT.md` before exposing an installation outside a trusted LAN.
+
+## Earlier releases
 
 ## v0.9.0 · مدیریت سرور و جابه‌جایی داده
 

@@ -1,7 +1,6 @@
 .venv/
 __pycache__/
 *.py[cod]
-uv.lock
 .env
 .data/
 data/*.sqlite3
@@ -16,3 +15,14 @@ backups/
 
 # Runtime diagnostic logs.
 logs/
+uv.lock
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
+.env.*
+!.env.example
+data/
+!data/.gitkeep

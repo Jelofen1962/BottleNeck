@@ -1,0 +1,228 @@
+{
+  "name": "BottleNeck",
+  "version": "1.0.0",
+  "built_at": "2026-11-15T08:28:35.309611+00:00",
+  "archive_root": "bottleneck-mvp/",
+  "files": [
+    {
+      "path": ".env.example",
+      "size": 1005,
+      "sha256": "5a751e6e0c5222f4f18c59b03e38e6df2bacb81d26386744e567cf5ebf85f472"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "size": 1207,
+      "sha256": "17ab655ceea79ec84fcfd713d7f2ec72132daea11bf924773476fd7dd57075da"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "size": 368,
+      "sha256": "2a64d5909cc972b33d84d1bd8447d86c2b189a50831cdd26e19cc28906d319c1"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "size": 694,
+      "sha256": "7c488e78dcd902529186e10969d5ab0f47ecce99aed6e326d18c6d1f1ea9409a"
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "size": 768,
+      "sha256": "4efbaebed6d6fc31cb1c2fe538748b87721e64e813e4597efa1c77adda011edd"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "size": 263,
+      "sha256": "2dda40b5dfe85c964f3a956eb2b2eba0cb4c707dc2d0a3662939025900875ad6"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "size": 1014,
+      "sha256": "2e4805a7c284f1fad604ff38ee76d9dd8256bd3a12c4fd7a635117d03237276a"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "size": 1160,
+      "sha256": "85a01f1dc79204911b580b997e02226c728b00407ba9ecf48c5e249a1832fe16"
+    },
+    {
+      "path": ".gitignore",
+      "size": 375,
+      "sha256": "e0926085db31392137d7fe05c7d6706fef5a146e563f95945c57b43d81e500d5"
+    },
+    {
+      "path": ".python-version",
+      "size": 5,
+      "sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "size": 8149,
+      "sha256": "9a2ac035f9313c948bdf8ec20335f50739133c724552cd66b3645db55bb2c117"
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "size": 904,
+      "sha256": "c84f8e1c3087026162f4c7d63e7af4f0d926d14d4473fbbfc9a7c50a7399acdc"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "size": 3835,
+      "sha256": "0103e702927c33ac896de36ee8fd17c6c522d1d654370ef62602b5e845f2245c"
+    },
+    {
+      "path": "HANDBOOK.md",
+      "size": 51145,
+      "sha256": "0e7bbaf8379c9dc02d58d53b3d004a0f4ed658ecbfa03745a7b19da4c75e9407"
+    },
+    {
+      "path": "LICENSE",
+      "size": 1078,
+      "sha256": "97b735afc28db7d13c781153d87284f1489a277080e86cbe44596760f5812762"
+    },
+    {
+      "path": "README.fa.md",
+      "size": 3444,
+      "sha256": "a58ea49ac29a9dc65675cc5e7f7a802afa45e42d6bef4d340c71062597cedc63"
+    },
+    {
+      "path": "README.md",
+      "size": 11232,
+      "sha256": "2162f3e550b195972c04d9701de829caf3f831ad9fe397c5b4731c78b4d64d8b"
+    },
+    {
+      "path": "ROADMAP.md",
+      "size": 1533,
+      "sha256": "037d95bbde5e7cf5337265f48725947f6533dec6caeb364150d764274d4ecc29"
+    },
+    {
+      "path": "SECURITY.md",
+      "size": 1965,
+      "sha256": "1a3a38447f23b3adb7e3789190319ccca7bf89f824e3112e9323d08d5ebf3da8"
+    },
+    {
+      "path": "SUPPORT.md",
+      "size": 734,
+      "sha256": "ec464c8e79571295376de433f00d5ab4b60fe8d1bf6c0e9fec0e658df9997d84"
+    },
+    {
+      "path": "allow-lan-firewall.ps1",
+      "size": 874,
+      "sha256": "859b4d947f728fe6e21b627b7698f74bbe2ea0c0bb0513b96b0f0c3683649f5d"
+    },
+    {
+      "path": "bottleneck_cli.py",
+      "size": 33627,
+      "sha256": "12dabf597d436ab733fa082e20d203b1a9b9c5118ba78f87eba41c8e68b373b0"
+    },
+    {
+      "path": "deploy/bottleneck.service",
+      "size": 957,
+      "sha256": "a4b838de63c6b31a8851df88c6f03b8f19b4f95fea2d2486168f22b4133df897"
+    },
+    {
+      "path": "deploy/nginx.conf.example",
+      "size": 696,
+      "sha256": "f182e798ebecc822645b2d46e246ef19591c37bec43a32f5ce9cf1dc055e7bcf"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "size": 2755,
+      "sha256": "ce3e01b1cae3957b73c1ab2ed041acdb8a16d6cc2f20349d9129ed2792290ae1"
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "size": 5229,
+      "sha256": "1926cbbf2414208ca55d813a4a90228d54f456be2355bc041303e3484051ef27"
+    },
+    {
+      "path": "docs/PROJECT-OVERVIEW.md",
+      "size": 2524,
+      "sha256": "5b2a2bf8f79e708b78d90c5ee1a36b876945c7ff6010595d143d9582f5ea9be3"
+    },
+    {
+      "path": "docs/PUBLISHING.md",
+      "size": 2764,
+      "sha256": "111698d2bff2b9b1f6699afeddf5dfe60b2f4970fe1ad372164ca0088ab25a24"
+    },
+    {
+      "path": "docs/RELEASE-CHECKLIST.md",
+      "size": 1650,
+      "sha256": "cb3dff44de0600d42ca6640ff2ef66eb62f6ea2c62c6f19e6f7945d49c8d2eba"
+    },
+    {
+      "path": "docs/SERVER-OPERATIONS.md",
+      "size": 3373,
+      "sha256": "52d784ff1d88e89f0f1495b45ba2dc5877f88c2c1d263ddd6b54307c9113040c"
+    },
+    {
+      "path": "docs/assets/README.md",
+      "size": 804,
+      "sha256": "bbb0ff67490672310b74c87c21cfb0d86f75ef1c0e4e623d7b1235a516ba4327"
+    },
+    {
+      "path": "docs/assets/readme-hero.svg",
+      "size": 6495,
+      "sha256": "b1cde4f3e2b380769f1950d41bfc32f12312752438961bed87c05b286a91918e"
+    },
+    {
+      "path": "index.html",
+      "size": 16728,
+      "sha256": "d6c8ce79e5ef3f3a3c814048fa3f0a5ea8a3c36be108bc59c4465e9b74dad9ed"
+    },
+    {
+      "path": "main.py",
+      "size": 264988,
+      "sha256": "9a051cf1f7e02b09d7de4cb3cd866fc90c0e58d7437518294aebec9d61d95770"
+    },
+    {
+      "path": "pyproject.toml",
+      "size": 916,
+      "sha256": "2858d259dbf42ad75e1b023b14659ec701bc05deeb445e05435d3a616d3da9d6"
+    },
+    {
+      "path": "schema.sql",
+      "size": 22443,
+      "sha256": "9f88e30ff4ad22378f4de29ea4d5fbe7bff26ea7c0c125e695e0ef7e63de718c"
+    },
+    {
+      "path": "scripts/build_release.py",
+      "size": 4054,
+      "sha256": "a9d197c39e26002628b88ec31c20ab25357ed5ea7d079d16fe5d939f7d66249e"
+    },
+    {
+      "path": "scripts/verify_release.py",
+      "size": 1743,
+      "sha256": "bb57da67397435140410dcdcf5947e8ccf73225f1715a235b9c812263e6a615b"
+    },
+    {
+      "path": "start.ps1",
+      "size": 1831,
+      "sha256": "28c2854f47ebaf24af2f1c8430ef99f1515802356b341f6aed8f038558a70d17"
+    },
+    {
+      "path": "start.sh",
+      "size": 1065,
+      "sha256": "dcc652cb3d0d9d54971beeeb4f7f2c424f86ee233115aa1d4c64788b5d02d5a6"
+    },
+    {
+      "path": "static/app.js",
+      "size": 233443,
+      "sha256": "f6e812959002d856ccb7b58065ca25e874675ef63ad84ee084175263043de732"
+    },
+    {
+      "path": "static/styles.css",
+      "size": 92152,
+      "sha256": "897a928dac226b08085f3b41e8b949aee1eb4b8dcaa8979803bd1a57c28d0450"
+    },
+    {
+      "path": "tests/conftest.py",
+      "size": 934,
+      "sha256": "aa741ac7f4a025cad136d9495a436666d76eb1bb03e8ca55d2fb33b8fff8f5d4"
+    },
+    {
+      "path": "tests/test_release_smoke.py",
+      "size": 3163,
+      "sha256": "b835eccc418e1f8f6aee66692b43ab61a1e61f53ff05986294a530ce181ba3b4"
+    }
+  ]
+}

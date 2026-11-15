@@ -24,16 +24,17 @@ import shutil
 import socket
 import sqlite3
 import uuid
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from logging.handlers import RotatingFileHandler
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv("BOTTLENECK_DB", BASE_DIR / "data" / "bottleneck.sqlite3"))
@@ -44,7 +45,7 @@ COOKIE_NAME = "bottleneck_session"
 SESSION_DAYS = int(os.getenv("BOTTLENECK_SESSION_DAYS", "14"))
 COOKIE_SECURE = os.getenv("BOTTLENECK_COOKIE_SECURE", "0") == "1"
 PBKDF2_ITERATIONS = 310_000
-APP_VERSION = "0.9.0"
+APP_VERSION = "1.0.0"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_AVATAR_BYTES = 3 * 1024 * 1024
 AVATAR_DIR = UPLOAD_DIR / "avatars"
@@ -64,7 +65,7 @@ SERVER_LOG_DIR.mkdir(parents=True, exist_ok=True)
 SERVER_LOG_PATH = SERVER_LOG_DIR / "server.log"
 _server_logger = logging.getLogger("bottleneck.server")
 if not _server_logger.handlers:
-    _handler = logging.FileHandler(SERVER_LOG_PATH, encoding="utf-8")
+    _handler = RotatingFileHandler(SERVER_LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
     _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     _server_logger.addHandler(_handler)
     _server_logger.setLevel(logging.INFO)
@@ -97,6 +98,44 @@ def new_id() -> str:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def enforce_rate_limit(request: Request, scope: str, subject: str, limit: int, window_seconds: int) -> None:
+    """Apply a persistent per-IP/per-subject limit to authentication endpoints.
+
+    The bucket key is hashed so the table does not retain raw IP addresses or email addresses.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    bucket_key = hashlib.sha256(f"{scope}\0{client_ip}\0{subject.casefold()}".encode("utf-8")).hexdigest()
+    current = datetime.now(timezone.utc)
+    current_iso = current.isoformat()
+    blocked_for = 0
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT window_started_at,hits FROM auth_rate_limits WHERE bucket_key=?", (bucket_key,)).fetchone()
+        window_start = None
+        if row:
+            try:
+                window_start = datetime.fromisoformat(row["window_started_at"])
+            except (TypeError, ValueError):
+                window_start = None
+        if not row or not window_start or (current - window_start).total_seconds() >= window_seconds:
+            conn.execute("""INSERT INTO auth_rate_limits(bucket_key,window_started_at,hits,updated_at)
+                VALUES(?,?,1,?) ON CONFLICT(bucket_key) DO UPDATE SET
+                window_started_at=excluded.window_started_at,hits=1,updated_at=excluded.updated_at""",
+                (bucket_key, current_iso, current_iso))
+        else:
+            hits = int(row["hits"]) + 1
+            conn.execute("UPDATE auth_rate_limits SET hits=?,updated_at=? WHERE bucket_key=?", (hits, current_iso, bucket_key))
+            if hits > limit:
+                blocked_for = max(1, int(window_seconds - (current - window_start).total_seconds()))
+        # Keep old buckets bounded. The indexed timestamp makes this inexpensive
+        # for the small authentication table and avoids a separate cleanup worker.
+        cutoff = (current - timedelta(hours=24)).isoformat()
+        conn.execute("DELETE FROM auth_rate_limits WHERE updated_at<?", (cutoff,))
+    if blocked_for:
+        raise HTTPException(status_code=429, detail="تعداد درخواست‌ها بیش از حد مجاز است؛ کمی بعد دوباره تلاش کنید.",
+                            headers={"Retry-After": str(blocked_for)})
 
 
 def password_hash(password: str, salt: bytes | None = None) -> str:
@@ -564,15 +603,14 @@ class NotificationPreferencesInput(BaseModel):
     deadlines_enabled: bool = True
 
 
-app = FastAPI(title="BottleNeck API", version=APP_VERSION)
-
-
+RUNTIME_ENV = os.getenv("BOTTLENECK_ENV", "development").strip().lower()
+API_DOCS_ENABLED = os.getenv("BOTTLENECK_ENABLE_API_DOCS", "0" if RUNTIME_ENV == "production" else "1") == "1"
 _background_tasks: list[asyncio.Task] = []
 _background_stop: asyncio.Event | None = None
 
 
-@app.on_event("startup")
-async def startup() -> None:
+@asynccontextmanager
+async def app_lifespan(application: FastAPI):
     init_db()
     _seed_all_workspace_permissions()
     global _background_stop
@@ -582,22 +620,44 @@ async def startup() -> None:
         asyncio.create_task(_backup_scheduler(), name="bottleneck-backups"),
         asyncio.create_task(_notification_mailer(), name="bottleneck-email"),
     ])
+    if RUNTIME_ENV == "production" and not COOKIE_SECURE:
+        _server_logger.warning("security_cookie_secure_disabled environment=production; use HTTPS before exposing outside a trusted LAN")
+    try:
+        yield
+    finally:
+        if _background_stop:
+            _background_stop.set()
+        for task in _background_tasks:
+            task.cancel()
+        if _background_tasks:
+            await asyncio.gather(*_background_tasks, return_exceptions=True)
+        _background_tasks.clear()
 
 
-@app.on_event("shutdown")
-async def shutdown() -> None:
-    if _background_stop:
-        _background_stop.set()
-    for task in _background_tasks:
-        task.cancel()
-    if _background_tasks:
-        await asyncio.gather(*_background_tasks, return_exceptions=True)
-    _background_tasks.clear()
-
+app = FastAPI(
+    title="BottleNeck API",
+    version=APP_VERSION,
+    docs_url="/api/docs" if API_DOCS_ENABLED else None,
+    redoc_url=None,
+    openapi_url="/api/openapi.json" if API_DOCS_ENABLED else None,
+    lifespan=app_lifespan,
+)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     started = time.monotonic()
+    if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        fetch_site = request.headers.get("sec-fetch-site", "").lower()
+        if fetch_site == "cross-site":
+            return JSONResponse({"detail": "Cross-site state-changing requests are not accepted."}, status_code=403)
+        origin = request.headers.get("origin")
+        if origin:
+            parsed = urlsplit(origin)
+            supplied_origin = f"{parsed.scheme}://{parsed.netloc}".rstrip("/").lower()
+            request_origin = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}".rstrip("/").lower()
+            configured_origins = {item.strip().rstrip("/").lower() for item in os.getenv("BOTTLENECK_ALLOWED_ORIGINS", "").split(",") if item.strip()}
+            if not parsed.scheme or not parsed.netloc or parsed.path not in {"", "/"} or (supplied_origin != request_origin and supplied_origin not in configured_origins):
+                return JSONResponse({"detail": "Request origin is not allowed."}, status_code=403)
     try:
         response = await call_next(request)
     except Exception:
@@ -610,10 +670,19 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; object-src 'none'; "
+        "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; "
+        "media-src 'self' blob:; connect-src 'self' ws: wss:"
+    )
+    if request.url.path == "/" or request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
-
 
 def create_session(response: Response, user_id: str, workspace_id: str, remember_me: bool = False) -> None:
     token = secrets.token_urlsafe(40)
@@ -977,7 +1046,8 @@ def network_info(request: Request) -> dict[str, Any]:
 
 
 @app.post("/api/auth/register")
-def register(payload: RegisterInput, response: Response) -> dict[str, Any]:
+def register(payload: RegisterInput, response: Response, request: Request) -> dict[str, Any]:
+    enforce_rate_limit(request, "register-ip", "all", 8, 3600)
     email = valid_email(payload.email)
     name = payload.name.strip()
     if len(name) < 2:
@@ -1069,8 +1139,10 @@ def register(payload: RegisterInput, response: Response) -> dict[str, Any]:
 
 
 @app.post("/api/auth/login")
-def login(payload: LoginInput, response: Response) -> dict[str, Any]:
+def login(payload: LoginInput, response: Response, request: Request) -> dict[str, Any]:
     email = valid_email(payload.email)
+    enforce_rate_limit(request, "login-ip", "all", 40, 600)
+    enforce_rate_limit(request, "login-account", email, 10, 600)
     with db() as conn:
         row = conn.execute(
             """SELECT u.id,u.password_hash,m.workspace_id FROM users u JOIN memberships m ON m.user_id=u.id
@@ -1093,6 +1165,7 @@ def login(payload: LoginInput, response: Response) -> dict[str, Any]:
 
 @app.post("/api/auth/2fa/verify")
 def verify_login_totp(payload: TotpVerifyInput, request: Request, response: Response, challenge_token: str = Header(default="", alias="X-Login-Challenge")) -> dict[str, bool]:
+    enforce_rate_limit(request, "totp-ip", challenge_token[:32] or "missing", 10, 600)
     invalid = False
     with db() as conn:
         challenge = conn.execute("SELECT * FROM login_challenges WHERE token_hash=? AND expires_at>?", (hash_token(challenge_token), now_iso())).fetchone()
@@ -3291,6 +3364,8 @@ def totp_disable(payload: TotpDisableInput, user: dict[str, Any] = Depends(curre
 @app.post("/api/auth/password-reset/request")
 def request_password_reset(payload: PasswordResetRequestInput, request: Request) -> dict[str, str]:
     email = valid_email(payload.email)
+    enforce_rate_limit(request, "password-reset-ip", "all", 8, 3600)
+    enforce_rate_limit(request, "password-reset-account", email, 4, 3600)
     with db() as conn:
         user_row = conn.execute("SELECT id,email FROM users WHERE email=? COLLATE NOCASE", (email,)).fetchone()
         if user_row:
@@ -3309,7 +3384,8 @@ def request_password_reset(payload: PasswordResetRequestInput, request: Request)
 
 
 @app.post("/api/auth/password-reset/complete")
-def complete_password_reset(payload: PasswordResetCompleteInput, response: Response) -> dict[str, bool]:
+def complete_password_reset(payload: PasswordResetCompleteInput, response: Response, request: Request) -> dict[str, bool]:
+    enforce_rate_limit(request, "password-reset-complete-ip", "all", 12, 600)
     with db() as conn:
         row = conn.execute("SELECT * FROM password_reset_tokens WHERE token_hash=? AND used_at IS NULL AND expires_at>?", (hash_token(payload.token), now_iso())).fetchone()
         if not row:
@@ -3520,7 +3596,7 @@ def _server_setting_int(key: str, default: int, minimum: int, maximum: int) -> i
 
 
 # ---------------------------------------------------------------------------
-# v0.9.0 — dedicated server administration, diagnostics and data portability.
+# v1.0.0 — dedicated server administration, diagnostics and data portability.
 # Server administration is intentionally separate from workspace settings.
 # ---------------------------------------------------------------------------
 

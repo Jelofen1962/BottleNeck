@@ -831,7 +831,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 #registerAvatarInput { display:block; width:100%; min-height:40px; padding:8px 10px; border:1px solid var(--line, #dfded8); border-radius:8px; background:var(--surface, #fff); color:var(--ink, #242522); font:inherit; }
 #registerAvatarInput::file-selector-button { margin-inline-end:10px; padding:6px 10px; border:0; border-radius:6px; background:var(--surface-2, #f0efeb); color:var(--ink, #242522); font:inherit; cursor:pointer; }
 
-/* BottleNeck v0.9.0: live Markdown workspace and richer team conversations. */
+/* BottleNeck v1.0.0: live Markdown workspace and richer team conversations. */
 .md-editor-modal { width: min(1180px, 96vw); max-height: 94vh; padding: 22px 24px; }
 .md-editor-modal #modalBody { min-width: 0; }
 .md-editor-form { display: grid; gap: 12px; }
@@ -985,7 +985,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 @media(max-width:920px){.chat-head-actions{width:100%;justify-content:space-between}.chat-search-box{width:min(100%,360px)}}
 @media(max-width:560px){.chat-head-actions{align-items:stretch}.chat-search-box{width:100%;min-width:0}.chat-head-actions>.live-presence{align-self:flex-start}}
 
-/* v0.9.0 — dedicated installation administration surface */
+/* v1.0.0 — dedicated installation administration surface */
 .server-status-strip{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:18px;align-items:center;padding:17px 19px;margin:0 0 15px;background:#29332d;color:#f7f6f0;border-radius:7px}
 .server-status-strip>div{display:grid;gap:5px;min-width:0}
 .server-status-strip>div+div{border-right:1px solid rgba(255,255,255,.13);padding-right:17px}

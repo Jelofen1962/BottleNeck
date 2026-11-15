@@ -1,4 +1,4 @@
--- BottleNeck v0.9.0 SQLite schema
+-- BottleNeck v1.0.0 SQLite schema
 -- Existing MVP databases are upgraded automatically when the application starts.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
@@ -472,7 +472,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON chat_attachments(mess
 CREATE INDEX IF NOT EXISTS idx_chat_attachments_staging ON chat_attachments(uploaded_by,message_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_mentions_user ON chat_message_mentions(user_id,message_id);
 
--- BottleNeck v0.9.0 instance-level administration. This is distinct from workspace roles.
+-- BottleNeck v1.0.0 instance-level administration. This is distinct from workspace roles.
 CREATE TABLE IF NOT EXISTS server_instance (
   id INTEGER PRIMARY KEY CHECK(id=1),
   install_id TEXT NOT NULL,
@@ -502,3 +502,13 @@ CREATE TABLE IF NOT EXISTS server_audit_logs (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_server_audit_created ON server_audit_logs(created_at DESC);
+
+
+-- v1.0.0 authentication abuse controls. Bucket keys are hashed (IP/email values are not stored).
+CREATE TABLE IF NOT EXISTS auth_rate_limits (
+  bucket_key TEXT PRIMARY KEY,
+  window_started_at TEXT NOT NULL,
+  hits INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_rate_limits_updated ON auth_rate_limits(updated_at);
